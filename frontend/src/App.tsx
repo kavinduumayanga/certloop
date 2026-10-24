@@ -35,6 +35,8 @@ import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DownloadIcon from "@mui/icons-material/Download";
+import KeyboardArrowLeftIcon from "@mui/icons-material/KeyboardArrowLeft";
+import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { Rnd } from "react-rnd";
 import { api, ApiError } from "./api";
 import type { Batch, Region, Status } from "./types";
@@ -43,6 +45,8 @@ import AllowanceCards from "./components/AllowanceCards";
 import ImportSummary from "./components/ImportSummary";
 import GenerationProgress from "./components/GenerationProgress";
 import SessionControls from "./components/SessionControls";
+import StatusCards from "./components/StatusCards";
+import BrandMark from "./components/BrandMark";
 import {
   DEFAULT_EMAIL_BODY,
   DEFAULT_EMAIL_SUBJECT,
@@ -84,9 +88,36 @@ function UploadButton({
     <Button
       component="label"
       variant="outlined"
-      startIcon={<CloudUploadIcon />}
+      className="upload-zone"
+      fullWidth
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        const file = event.dataTransfer.files?.[0];
+        if (file) onFile(file);
+      }}
     >
-      {label}
+      <Stack alignItems="center" spacing={1}>
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 2.5,
+            color: "secondary.main",
+            bgcolor: "rgba(56,189,248,.09)",
+          }}
+        >
+          <CloudUploadIcon />
+        </Box>
+        <Box>
+          <Typography fontWeight={700}>{label}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Drop a file here or browse your device
+          </Typography>
+        </Box>
+      </Stack>
       <input
         hidden
         type="file"
@@ -361,9 +392,11 @@ export default function App() {
             </Stack>
           </Paper>
         ) : (
-          <Stack alignItems="center" spacing={2}>
-            <CircularProgress />
-            <Typography color="text.secondary">
+          <Stack alignItems="center" spacing={2} sx={{ width: "100%", px: 2, textAlign: "center" }}>
+            <BrandMark size={82} priority />
+            <CircularProgress size={26} />
+            <Typography variant="h6">CertLoop</Typography>
+            <Typography color="text.secondary" sx={{ maxWidth: "100%" }}>
               Connecting to the local certificate service…
             </Typography>
           </Stack>
@@ -746,11 +779,12 @@ export default function App() {
           for generated PDFs. The dashed box is an editor guide only.
         </Typography>
       </Box>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={2}
-        useFlexGap
-        flexWrap="wrap"
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          gap: 2,
+        }}
       >
         <UploadButton
           label={
@@ -775,9 +809,11 @@ export default function App() {
           accept=".ttf,.otf,font/ttf,font/otf"
           onFile={(f) => run(() => api.upload(batch.id, "font", f), setB)}
         />
-        {batch.template_path && <Chip color="success" label="Template ready" />}
-        {batch.font_path && <Chip color="success" label="Exact font ready" />}
-        {regionDirty && <Chip color="warning" label="Unsaved placement" />}
+      </Box>
+      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+        {batch.template_path && <Chip color="success" variant="outlined" label="Template ready" />}
+        {batch.font_path && <Chip color="success" variant="outlined" label="Exact font ready" />}
+        {regionDirty && <Chip color="warning" variant="outlined" label="Unsaved placement" />}
       </Stack>
       <Autocomplete
         options={valid}
@@ -917,6 +953,7 @@ export default function App() {
         direction={{ xs: "column", md: "row" }}
         spacing={2}
         alignItems={{ md: "center" }}
+        sx={{ p: 2, borderRadius: 3, border: "1px solid rgba(255,255,255,.08)", bgcolor: "rgba(2,6,23,.25)" }}
       >
         <TextField
           type="number"
@@ -1032,7 +1069,7 @@ export default function App() {
       </Stack>
       <GenerationProgress progress={batch.generation} />
       {currentCertificate ? (
-        <Box>
+        <Paper sx={{ p: 1.5, bgcolor: "rgba(2,6,23,.35)" }}>
           <img
             style={{
               width: "100%",
@@ -1043,7 +1080,7 @@ export default function App() {
             src={`/api/participants/${currentCertificate.id}/preview`}
             alt="Personalized certificate preview"
           />
-        </Box>
+        </Paper>
       ) : (
         <Alert severity="info">
           A current personalized preview appears here as generation completes.
@@ -1071,53 +1108,74 @@ export default function App() {
           to the root .env file, then restart FastAPI.
         </Alert>
       )}
-      <TextField
-        label="Sender email"
-        type="email"
-        value={emailDraft?.sender_email || identity}
-        onChange={(e) => changeEmailDraft({ sender_email: e.target.value })}
-      />
-      <TextField
-        label="Subject"
-        value={emailDraft?.email_subject ?? batch.email_subject}
-        onChange={(e) => changeEmailDraft({ email_subject: e.target.value })}
-      />
-      <TextField
-        label="Plain text body"
-        multiline
-        minRows={8}
-        value={emailDraft?.email_body ?? batch.email_body}
-        onChange={(e) => changeEmailDraft({ email_body: e.target.value })}
-      />
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Stack spacing={1.5}>
-          <Box>
-            <Typography fontWeight={700}>Email preview</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Previewing the saved participant name: {emailPreviewName}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "minmax(0,1.08fr) minmax(340px,.92fr)" },
+          gap: 2.5,
+          alignItems: "stretch",
+        }}
+      >
+        <Paper className="glass-surface" sx={{ p: { xs: 2, sm: 3 } }}>
+          <Stack spacing={2.25}>
+            <Box>
+              <Typography variant="overline" color="secondary.main">
+                Message editor
+              </Typography>
+              <Typography variant="h6">Personalize every message</Typography>
+            </Box>
+            <TextField
+              label="Sender email"
+              type="email"
+              value={emailDraft?.sender_email || identity}
+              onChange={(e) => changeEmailDraft({ sender_email: e.target.value })}
+            />
+            <TextField
+              label="Subject"
+              value={emailDraft?.email_subject ?? batch.email_subject}
+              onChange={(e) => changeEmailDraft({ email_subject: e.target.value })}
+            />
+            <TextField
+              label="Plain text body"
+              multiline
+              minRows={10}
+              value={emailDraft?.email_body ?? batch.email_body}
+              onChange={(e) => changeEmailDraft({ email_body: e.target.value })}
+            />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+              <Button variant="contained" onClick={emailSave}>
+                Save email
+              </Button>
+              <Button variant="outlined" startIcon={<RefreshIcon />} onClick={restoreDefaultEmailTemplate}>
+                Restore Default Template
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+        <Paper className="glass-surface" sx={{ p: { xs: 2, sm: 3 } }}>
+          <Stack spacing={1.75} height="100%">
+            <Box>
+              <Typography variant="overline" color="secondary.main">
+                Live preview
+              </Typography>
+              <Typography variant="h6">Individual email</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Previewing the saved participant name: {emailPreviewName}
+              </Typography>
+            </Box>
+            <Divider />
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Subject
+              </Typography>
+              <Typography fontWeight={700}>{emailPreviewSubject}</Typography>
+            </Box>
+            <Typography className="email-preview-body" variant="body2">
+              {emailPreviewBody}
             </Typography>
-          </Box>
-          <Divider />
-          <Typography variant="subtitle2">
-            Subject: {emailPreviewSubject}
-          </Typography>
-          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-            {emailPreviewBody}
-          </Typography>
-        </Stack>
-      </Paper>
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-        <Button variant="contained" onClick={emailSave}>
-          Save email
-        </Button>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={restoreDefaultEmailTemplate}
-        >
-          Restore Default Template
-        </Button>
-      </Stack>
+          </Stack>
+        </Paper>
+      </Box>
     </Stack>,
     <Stack spacing={3} key="send">
       <Stack
@@ -1148,29 +1206,7 @@ export default function App() {
           Send Certificates
         </Button>
       </Stack>
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))",
-          gap: 1.5,
-        }}
-      >
-        {[
-          ["Total recipients", batch.counts.TOTAL],
-          ["Pending", batch.counts.PENDING],
-          ["Sending", batch.counts.SENDING],
-          ["Sent", batch.counts.SENT],
-          ["Failed", batch.counts.FAILED],
-          ["Uncertain", batch.counts.UNCERTAIN],
-        ].map(([label, value]) => (
-          <Paper variant="outlined" key={label} sx={{ p: 1.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              {label}
-            </Typography>
-            <Typography variant="h5">{value}</Typography>
-          </Paper>
-        ))}
-      </Box>
+      <StatusCards batch={batch} />
       <AllowanceCards allowance={batch.allowance} />
       {sendBlockedReasons.length > 0 && (
         <Alert severity="info">
@@ -1253,7 +1289,7 @@ export default function App() {
           Export Report
         </Button>
       </Stack>
-      <Paper variant="outlined" sx={{ p: 2 }}>
+      <Paper className="glass-surface" sx={{ p: { xs: 2, sm: 2.5 } }}>
         <Stack spacing={1}>
           <Stack direction="row" justifyContent="space-between">
             <Typography fontWeight={700}>Live delivery progress</Typography>
@@ -1349,41 +1385,67 @@ export default function App() {
   ];
   return (
     <>
-      <AppBar position="static" elevation={0} sx={{ background: "#132238" }}>
-        <Toolbar>
-          <AutoAwesomeIcon sx={{ mr: 1.5, color: "#e8994e" }} />
-          <Typography fontFamily="Georgia,serif" fontWeight={700}>
-            Certificate Dispatch
-          </Typography>
-          <Box flex={1} />
-          <Chip
-            size="small"
-            label="Local only"
-            sx={{ color: "white", borderColor: "rgba(255,255,255,.4)" }}
-            variant="outlined"
-          />
-        </Toolbar>
-        <Box className="hero-grid" sx={{ px: 3, py: 4 }}>
-          <Container maxWidth="lg">
-            <Typography variant="h3" color="white">
-              From participant list to personal delivery.
-            </Typography>
-            <Typography
-              sx={{ color: "rgba(255,255,255,.7)", mt: 1, maxWidth: 720 }}
-            >
-              Generate faithful, high-resolution certificates and send them
-              safely through your authenticated personal Gmail account.
-            </Typography>
-          </Container>
-        </Box>
+      <AppBar
+        position="sticky"
+        elevation={0}
+        sx={{
+          background: "rgba(8,11,18,.78)",
+          borderBottom: "1px solid rgba(255,255,255,.07)",
+          backdropFilter: "blur(18px)",
+        }}
+      >
+        <Container maxWidth="xl">
+          <Toolbar disableGutters sx={{ minHeight: { xs: 68, md: 76 } }}>
+            <Box sx={{ display: { xs: "none", md: "block" } }}>
+              <BrandMark variant="horizontal" width={180} size={60} priority />
+            </Box>
+            <Box sx={{ display: { xs: "flex", md: "none" }, alignItems: "center" }}>
+              <BrandMark size={36} priority />
+              <Box sx={{ ml: 1.1 }}>
+                <Typography variant="h6" lineHeight={1.05}>CertLoop</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
+                  Generate. Personalize. Deliver.
+                </Typography>
+              </Box>
+            </Box>
+            <Box flex={1} />
+            <Box sx={{ display: { xs: "none", sm: "block" }, textAlign: "right", mr: 1.5 }}>
+              <Typography variant="caption" color="text.secondary">Current session</Typography>
+              <Typography variant="body2" fontWeight={700} noWrap maxWidth={260}>{batch.name}</Typography>
+            </Box>
+            <Chip size="small" label="Local workspace" color="primary" variant="outlined" />
+          </Toolbar>
+        </Container>
       </AppBar>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+      <Box className="hero-grid" sx={{ pt: { xs: 5, md: 8 }, pb: { xs: 7, md: 10 } }}>
+        <Container maxWidth="xl">
+          <Typography variant="overline" color="secondary.main">Certificate operations, simplified</Typography>
+          <Typography variant="h2" sx={{ mt: 1, maxWidth: 850, fontSize: { xs: "2.45rem", sm: "3.5rem", md: "4.45rem" } }}>
+            Generate. Personalize. <Box component="span" sx={{ background: "linear-gradient(135deg,#60A5FA,#38BDF8)", backgroundClip: "text", color: "transparent" }}>Deliver.</Box>
+          </Typography>
+          <Typography sx={{ color: "text.secondary", mt: 2, maxWidth: 680, fontSize: { xs: "1rem", md: "1.12rem" }, lineHeight: 1.7 }}>
+            A focused workflow for creating high-quality certificates and delivering them safely through your authenticated Gmail account.
+          </Typography>
+        </Container>
+      </Box>
+      <Container maxWidth="xl" sx={{ mt: { xs: -3, md: -5 }, pb: 5 }}>
+        <Paper className="glass-surface" sx={{ p: { xs: 1.5, md: 2.5 }, mb: 2.5 }}>
+          <TextField
+            select
+            fullWidth
+            size="small"
+            label="Workflow step"
+            value={step}
+            onChange={(event) => requestStep(Number(event.target.value))}
+            sx={{ display: { xs: "block", md: "none" } }}
+          >
+            {steps.map((label, index) => <MenuItem key={label} value={index}>{index + 1}. {label}</MenuItem>)}
+          </TextField>
           <Stepper
             activeStep={step}
             nonLinear
             alternativeLabel
-            sx={{ mb: 4, overflowX: "auto" }}
+            sx={{ display: { xs: "none", md: "flex" } }}
           >
             {steps.map((label, i) => (
               <Step key={label} completed={i < step}>
@@ -1391,20 +1453,23 @@ export default function App() {
               </Step>
             ))}
           </Stepper>
+        </Paper>
+        <Paper className="glass-surface" sx={{ p: { xs: 2, sm: 3, lg: 4 } }}>
           {busy && <LinearProgress sx={{ mb: 2 }} />}
           {error && (
             <Alert severity="error" onClose={() => setError("")} sx={{ mb: 2 }}>
               {error}
             </Alert>
           )}
-          {content[step]}
+          <Box className="workflow-page" key={step}>{content[step]}</Box>
           <Divider sx={{ my: 3 }} />
-          <Stack direction="row" justifyContent="space-between">
-            <Button disabled={step === 0} onClick={() => requestStep(step - 1)}>
+          <Stack direction="row" justifyContent="space-between" spacing={2}>
+            <Button startIcon={<KeyboardArrowLeftIcon />} disabled={step === 0} onClick={() => requestStep(step - 1)}>
               Back
             </Button>
             <Button
               variant="contained"
+              endIcon={<KeyboardArrowRightIcon />}
               disabled={step === steps.length - 1}
               onClick={() => requestStep(step + 1)}
             >
@@ -1413,6 +1478,17 @@ export default function App() {
           </Stack>
         </Paper>
       </Container>
+      <Box component="footer" sx={{ borderTop: "1px solid rgba(255,255,255,.07)", py: 3.5 }}>
+        <Container maxWidth="xl">
+          <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between" spacing={1}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <BrandMark size={30} />
+              <Typography variant="body2" color="text.secondary">CertLoop — Generate. Personalize. Deliver.</Typography>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">© {new Date().getFullYear()} CertLoop · Crafted by Kavindu Umayanga</Typography>
+          </Stack>
+        </Container>
+      </Box>
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Confirm bulk delivery</DialogTitle>
         <DialogContent>

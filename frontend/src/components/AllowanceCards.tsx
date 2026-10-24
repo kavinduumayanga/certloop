@@ -6,10 +6,10 @@ const items: [
   string,
   string,
 ][] = [
-  ["used", "Counted activity (24h)", "#16697a"],
-  ["successful", "Successful sends", "#14866d"],
-  ["failed", "Failed attempts", "#c2413b"],
-  ["uncertain", "Uncertain attempts", "#b7791f"],
+  ["used", "Counted activity (24h)", "#38BDF8"],
+  ["successful", "Successful sends", "#4ADE80"],
+  ["failed", "Failed attempts", "#F87171"],
+  ["uncertain", "Uncertain attempts", "#FBBF24"],
 ];
 
 export default function AllowanceCards({
@@ -20,7 +20,7 @@ export default function AllowanceCards({
   return (
     <Box>
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        Application sending activity · rolling 24 hours
+        Sending activity · rolling 24 hours
       </Typography>
       <Box
         sx={{
@@ -31,17 +31,17 @@ export default function AllowanceCards({
         }}
       >
         {allowance.enabled && (
-          <Paper variant="outlined" sx={{ p: 1.5 }}>
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: "rgba(2,6,23,.28)" }}>
             <Typography variant="caption" color="text.secondary">
               Configured app cap remaining
             </Typography>
-            <Typography variant="h5" sx={{ color: "#132238" }}>
+            <Typography variant="h5" color="secondary.main">
               {allowance.remaining} / {allowance.limit}
             </Typography>
           </Paper>
         )}
         {items.map(([key, label, color]) => (
-          <Paper variant="outlined" key={key} sx={{ p: 1.5 }}>
+          <Paper variant="outlined" key={key} sx={{ p: 2, bgcolor: "rgba(2,6,23,.28)" }}>
             <Typography variant="caption" color="text.secondary">
               {label}
             </Typography>

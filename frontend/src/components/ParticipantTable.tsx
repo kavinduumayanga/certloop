@@ -198,7 +198,7 @@ export default function ParticipantTable({
     <TableContainer
       component={Paper}
       variant="outlined"
-      sx={{ maxHeight: 500 }}
+      sx={{ maxHeight: 520, borderRadius: 3, bgcolor: "rgba(2,6,23,.24)", overflowX: "auto" }}
     >
       <Table stickyHeader size="small">
         <TableHead>
@@ -215,6 +215,16 @@ export default function ParticipantTable({
           </TableRow>
         </TableHead>
         <TableBody>
+          {rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={9} align="center" sx={{ py: 7 }}>
+                <Typography fontWeight={700}>No participants to show</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Import a CSV or adjust the current search and filters.
+                </Typography>
+              </TableCell>
+            </TableRow>
+          )}
           {rows.map((participant) => (
             <TableRow key={participant.id} hover>
               {onPatch ? (

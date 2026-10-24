@@ -16,8 +16,8 @@ export default function GenerationProgress({
   if (progress.status === "IDLE" && !progress.total) return null;
   const running = progress.status === "RUNNING";
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack spacing={1}>
+    <Paper className="glass-surface" sx={{ p: { xs: 2, sm: 2.5 } }}>
+      <Stack spacing={1.5}>
         <Stack direction="row" justifyContent="space-between">
           <Typography fontWeight={700}>
             {running ? "Generating certificates…" : "Generation summary"}
@@ -29,7 +29,7 @@ export default function GenerationProgress({
         <LinearProgress
           variant="determinate"
           value={progress.percent}
-          sx={{ height: 10, borderRadius: 5 }}
+          sx={{ height: 11, borderRadius: 999 }}
         />
         {progress.current_name && (
           <Typography variant="body2">
@@ -43,18 +43,12 @@ export default function GenerationProgress({
             gap: 1,
           }}
         >
-          <Typography variant="body2">
-            Total: <b>{progress.total}</b>
-          </Typography>
-          <Typography variant="body2">
-            Generated: <b>{progress.succeeded}</b>
-          </Typography>
-          <Typography variant="body2">
-            Failed: <b>{progress.failed}</b>
-          </Typography>
-          <Typography variant="body2">
-            Remaining: <b>{progress.remaining}</b>
-          </Typography>
+          {[["Total", progress.total], ["Generated", progress.succeeded], ["Failed", progress.failed], ["Remaining", progress.remaining]].map(([label, value]) => (
+            <Paper key={label} variant="outlined" sx={{ p: 1.25, bgcolor: "rgba(2,6,23,.3)" }}>
+              <Typography variant="caption" color="text.secondary">{label}</Typography>
+              <Typography fontWeight={750}>{value}</Typography>
+            </Paper>
+          ))}
         </Box>
         {!running && progress.status === "COMPLETED" && (
           <Alert severity="success">

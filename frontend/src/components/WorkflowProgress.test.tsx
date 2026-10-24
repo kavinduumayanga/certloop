@@ -46,8 +46,8 @@ describe("GenerationProgress", () => {
     );
     expect(screen.getByText("50%")).toBeInTheDocument();
     expect(screen.getByText(/Grace/)).toBeInTheDocument();
-    expect(screen.getByText(/Generated:/)).toHaveTextContent("4");
-    expect(screen.getByText(/Failed:/)).toHaveTextContent("1");
+    expect(screen.getByText("Generated").parentElement).toHaveTextContent("4");
+    expect(screen.getByText("Failed").parentElement).toHaveTextContent("1");
   });
 });
 

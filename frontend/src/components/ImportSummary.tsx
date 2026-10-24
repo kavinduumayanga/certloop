@@ -53,11 +53,11 @@ export default function ImportSummary({
           ["Invalid", counts.invalid, "error"],
           ["Duplicates", counts.duplicates, "warning"],
         ].map(([label, value, color]) => (
-          <Paper variant="outlined" key={String(label)} sx={{ p: 1.5 }}>
+          <Paper variant="outlined" key={String(label)} sx={{ p: 2, bgcolor: "rgba(2,6,23,.28)" }}>
             <Typography variant="caption" color="text.secondary">
               {label}
             </Typography>
-            <Typography variant="h5">{value}</Typography>
+            <Typography variant="h4" sx={{ my: 0.5 }}>{value}</Typography>
             <Chip
               size="small"
               color={color as "default" | "success" | "error" | "warning"}
