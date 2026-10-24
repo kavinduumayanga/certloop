@@ -1,7 +1,8 @@
 <div align="center">
+  <img src="frontend/public/branding/certloop-logo.png" alt="CertLoop" width="520">
   <h1>CertLoop</h1>
   <p><strong>Generate. Personalize. Deliver.</strong></p>
-  <p>A local-first web application for creating personalized certificates and delivering them through Gmail SMTP.</p>
+  <p>A local-first application for generating personalized PDF certificates and distributing them through Gmail SMTP.</p>
 
   <p>
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
@@ -13,38 +14,45 @@
 
 ## Overview
 
-CertLoop guides a local operator through a five-step workflow: import participants, customize a certificate template, generate personalized PDFs, prepare an email, and track delivery. Sessions keep separate workshops and their history organized, while SQLite stores progress locally.
+CertLoop provides a five-step workflow for importing participants, designing certificates, generating personalized PDFs, composing messages, and monitoring delivery. Named sessions keep participant lists, certificate settings, email templates, generated files, and delivery history separate.
 
-Email delivery is explicit and operator-controlled. Importing, previewing, and generating certificates never sends email.
+Certificate work does not send email. Delivery begins only after an operator explicitly confirms a bulk send.
 
 ## Features
 
-- Import participants from CSV, map common columns, validate required values and email syntax, detect duplicates, and edit or exclude rows.
-- Create named sessions with isolated participants, certificate settings, and delivery progress.
-- Upload a JPG or PNG certificate template and position the participant name visually.
-- Generate with the included Bitstream Vera Sans default, or select a custom licensed TTF or OTF font per session.
-- Preview generated certificates as PNG and download individual PDFs or a ZIP archive.
-- Customize the email sender, subject, and body with the `{name}` participant placeholder.
-- Deliver individual certificate attachments through Gmail SMTP using an App Password.
-- Follow generation and delivery progress in real time through server-sent events.
-- Pause or resume sending, retry definite failures, and safely review uncertain outcomes.
-- Export a CSV delivery report with participant status and attempt history.
+- Create uniquely named sessions with backend-generated IDs and isolated data.
+- Import CSV participant lists, map columns, validate names and email syntax, detect duplicates, and edit or exclude rows.
+- Upload JPG or PNG certificate templates and position a draggable, resizable participant-name area.
+- Use the included Bitstream Vera Sans default or upload a licensed TTF/OTF font, including Citadel Script, per session.
+- Adjust font size, minimum size, vertical offset, and long-name auto-fit with an immediate full-resolution preview.
+- Generate personalized PDF certificates in a batch with live progress updates.
+- Search participants to preview and download individual certificates or download current certificates as a ZIP archive.
+- Regenerate certificates for valid participants—including previously `SENT` participants—without resending email or changing delivery status.
+- Preserve versioned certificate files and historical delivery-attempt attachment references.
+- Edit the email sender, subject, and plain-text body with the `{name}` personalization placeholder.
+- Send PDF attachments through Gmail SMTP with App Password authentication and verified sender aliases.
+- Monitor `PENDING`, `SENDING`, `SENT`, `FAILED`, and `UNCERTAIN` states in real time.
+- Pause and resume delivery, retry definite failures, and reconcile uncertain outcomes without automatic duplicate sends.
+- Export a CSV delivery report containing recipient status and attempt information.
+
+Certificate regeneration only creates a newer certificate artifact. It never automatically sends email, resets delivery states, or makes a previously sent participant eligible for the normal bulk-send queue.
 
 ## Screenshots
 
-Screenshots are not currently included in the repository.
+Application screenshots are not currently included in the repository.
 
-<!-- Add sanitized application screenshots here after placing them in docs/screenshots/. -->
+<!-- Add sanitized screenshots here after placing them in docs/screenshots/. -->
 
 ## Tech Stack
 
 | Area | Technology |
 |---|---|
-| Frontend | React 19, TypeScript, Vite, Material UI |
+| Frontend | React 19, TypeScript 5.8, Vite 6, Material UI 7 |
 | Backend | FastAPI, Pydantic, Uvicorn |
-| Data | SQLAlchemy, SQLite |
+| Persistence | SQLAlchemy, SQLite |
 | Certificates | Pillow, ReportLab |
 | Live updates | Server-sent events (SSE) |
+| Email | Gmail SMTP with STARTTLS and App Password authentication |
 | Testing | pytest, Vitest, Testing Library |
 
 ## Getting Started
@@ -52,15 +60,16 @@ Screenshots are not currently included in the repository.
 ### Prerequisites
 
 - Python 3.12 or later
-- Node.js 20 LTS or 22+ and npm
-- macOS or Linux for the included shell helper scripts
+- Node.js 18, 20, or 22+ and npm, matching the Vite 6 runtime requirement
 - A JPG or PNG certificate template
-- A licensed TTF or OTF font only when you want to replace the included default
-- A Gmail account with 2-Step Verification and an App Password, only if email delivery is needed
+- A Gmail account with 2-Step Verification and an App Password only when email delivery is needed
+- Bash and `lsof` when using the included helper scripts on macOS or Linux
+
+A custom font is optional. CertLoop uses Bitstream Vera Sans from ReportLab by default. Only upload fonts and certificate artwork you are permitted to use.
 
 ### Install
 
-From the repository root:
+Run these commands from the repository root:
 
 ```bash
 python3 -m venv .venv
@@ -74,7 +83,7 @@ npm ci
 cd ..
 ```
 
-### Run locally
+### Start the application
 
 Start both development servers:
 
@@ -82,7 +91,7 @@ Start both development servers:
 ./start-dev.sh
 ```
 
-Alternatively, run them in separate terminals:
+Or start them in separate terminals:
 
 ```bash
 ./start-backend.sh
@@ -92,15 +101,29 @@ Alternatively, run them in separate terminals:
 ./start-frontend.sh
 ```
 
-Open <http://127.0.0.1:5173>. FastAPI documentation is available at <http://127.0.0.1:8000/docs>.
+Manual equivalents are:
 
-The servers bind to localhost by default. Avoid exposing CertLoop to a network without adding appropriate authentication and access controls.
+```bash
+.venv/bin/python -m uvicorn app.main:app \
+  --app-dir backend --reload --host 127.0.0.1 --port 8000
+```
+
+```bash
+cd frontend
+npm run dev -- --host 127.0.0.1
+```
+
+Open the application at <http://127.0.0.1:5173>. FastAPI documentation is available at <http://127.0.0.1:8000/docs>.
+
+SQLite tables and safe additive migrations are applied automatically when the backend starts. Runtime data is stored under `./data` by default; the database is not recreated during normal startup.
+
+CertLoop binds to localhost by default. Add authentication and appropriate access controls before exposing it to a network.
 
 ## Environment Configuration
 
-Copy [`.env.example`](.env.example) to `.env`. The example contains every supported setting and safe local defaults. The `.env` file is ignored by Git and should never be committed.
+Copy [`.env.example`](.env.example) to `.env`. The example file contains every supported setting and safe local defaults. `.env` is ignored by Git and must not be committed.
 
-Certificate creation works without SMTP credentials. Email delivery requires these values:
+Certificate import, preview, generation, and download work without SMTP credentials. Sending email requires:
 
 | Variable | Purpose |
 |---|---|
@@ -108,49 +131,57 @@ Certificate creation works without SMTP credentials. Email delivery requires the
 | `SMTP_APP_PASSWORD` | Google-generated App Password |
 | `SMTP_SENDER_EMAIL` | Primary address used in the `From` header |
 
-Common optional settings include:
+Other supported settings are:
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `DATABASE_URL` | `sqlite:///./data/certificates.db` | Local SQLAlchemy database |
+| `APP_HOST` | `127.0.0.1` | Application host setting |
+| `APP_PORT` | `8000` | Backend port setting |
+| `FRONTEND_ORIGIN` | `http://localhost:5173` | Allowed browser origin |
+| `DATABASE_URL` | `sqlite:///./data/certificates.db` | SQLAlchemy database URL |
 | `DATA_DIR` | `./data` | Upload and generated-file directory |
-| `FRONTEND_ORIGIN` | `http://localhost:5173` | Allowed frontend origin |
-| `MAX_UPLOAD_MB` | `25` | Maximum upload size |
-| `MAX_EMAILS_PER_DAY` | Disabled | Optional rolling application-level cap |
-| `SMTP_ALLOWED_ALIASES` | Empty | Comma-separated Gmail aliases already verified for the account |
-| `SMTP_TIMEOUT_SECONDS` | `30` | Connection and SMTP command timeout |
-| `SMTP_DATA_TIMEOUT_SECONDS` | `300` | Attachment upload and final acknowledgment timeout |
-
-The remaining pacing and connection settings are documented directly in [`.env.example`](.env.example). The application intentionally uses one sequential SMTP worker.
+| `MAX_UPLOAD_MB` | `25` | Maximum accepted upload size |
+| `DELIVERY_CONCURRENCY` | `1` | Sequential delivery worker count |
+| `MAX_EMAILS_PER_DAY` | Disabled | Optional rolling 24-hour application cap |
+| `EMAIL_SEND_DELAY_SECONDS` | `5` | Initial delay between submissions |
+| `MIN_EMAIL_SEND_DELAY_SECONDS` | `5` | Minimum adaptive delay |
+| `MAX_EMAIL_SEND_DELAY_SECONDS` | `120` | Maximum adaptive delay |
+| `HEALTHY_SENDS_BEFORE_SPEEDUP` | `5` | Successful sends before reducing delay |
+| `SMTP_HOST` | `smtp.gmail.com` | SMTP server |
+| `SMTP_PORT` | `587` | STARTTLS SMTP port |
+| `SMTP_ALLOWED_ALIASES` | Empty | Comma-separated verified Gmail aliases |
+| `SMTP_TIMEOUT_SECONDS` | `30` | Connection and command timeout |
+| `SMTP_DATA_TIMEOUT_SECONDS` | `300` | Attachment submission timeout |
+| `SMTP_CONNECTION_REUSE` | `true` | Reuse an SMTP connection when possible |
+| `SMTP_MAX_MESSAGES_PER_CONNECTION` | `25` | Reconnect after this many messages |
+| `SMTP_WORKERS` | `1` | Enforced sequential SMTP worker count |
 
 ### Gmail App Password
 
 1. Enable 2-Step Verification for the Gmail account.
-2. In Google Account security settings, create an App Password for CertLoop.
-3. Add the Gmail address and generated password to `.env`.
-4. Set `SMTP_SENDER_EMAIL` to the same address, or use an address already configured in Gmail as a verified “Send mail as” alias.
+2. Create an App Password in the Google Account security settings.
+3. Add the Gmail address and generated App Password to `.env`.
+4. Set `SMTP_SENDER_EMAIL` to that account or to a verified Gmail “Send mail as” alias listed in `SMTP_ALLOWED_ALIASES`.
 5. Restart the backend after changing `.env`.
 
-Do not use a normal Gmail password. Provider limits and policies remain authoritative, and SMTP acceptance does not guarantee inbox placement or that a message will be read.
+Do not use a normal Gmail password. SMTP acceptance confirms that the provider accepted the submission; it does not guarantee inbox placement or that the recipient read the message.
 
 ## How to Use
 
-1. **Import Participants** — Create or select a session, then import a CSV containing participant names and email addresses. Review validation results and fix or exclude invalid rows.
-2. **Template & Font** — Upload the certificate image, optionally select a custom font, then position and resize the participant-name area.
-3. **Generate & Preview** — Generate personalized certificates, inspect previews, and optionally download PDFs or a ZIP archive.
-4. **Configure Email** — Confirm the SMTP sender and customize the subject and plain-text body. Use `{name}` to insert each participant's saved name.
-5. **Send Certificates** — Review the ready count, complete the explicit confirmation, and monitor delivery. Pause, resume, retry definite failures, or export the delivery report as needed.
+1. **Import Participants** — Create or select a session, upload a CSV, map the name and email columns when needed, then review and correct invalid or duplicate rows.
+2. **Template & Font** — Upload a certificate background, keep the default font or select a custom font, then position and style the participant name.
+3. **Generate & Preview** — Generate certificates, monitor progress, search participants, preview or download individual PDFs, and regenerate outdated certificates when needed.
+4. **Configure Email** — Select the SMTP sender and edit the subject and plain-text body. Use `{name}` to insert each participant's saved name.
+5. **Send Certificates** — Review readiness, enter the required confirmation, start delivery, and monitor or export the results.
 
-Delivery states are preserved as `PENDING`, `SENDING`, `SENT`, `FAILED`, or `UNCERTAIN`. An uncertain message is never retried automatically because the provider may already have accepted it.
-
-CertLoop uses **Bitstream Vera Sans** from the required ReportLab package as its offline default certificate font. Google Sans is not bundled or represented as the default because it is a Google brand typeface without general redistribution terms. Uploaded custom fonts remain the user's responsibility and are stored per session.
+The included sanitized CSV examples are available at [`samples/participants.csv`](samples/participants.csv) and [`frontend/public/samples/participants.csv`](frontend/public/samples/participants.csv).
 
 ## Contributing
 
-Contributions are welcome. A typical workflow is:
+Contributions are welcome:
 
 1. Fork the repository and create a focused branch.
-2. Make the change without committing credentials, participant data, generated certificates, or databases.
+2. Make the change without committing `.env`, participant data, databases, uploaded assets, generated certificates, or credentials.
 3. Run the checks:
 
    ```bash
@@ -162,10 +193,10 @@ Contributions are welcome. A typical workflow is:
    npm run build
    ```
 
-4. Commit with a clear message and open a pull request describing the change and how it was tested.
+4. Commit with a clear message and open a pull request describing the change and verification performed.
 
-Please keep pull requests small and avoid sending real email from automated tests.
+Tests must use fake SMTP clients and must never send real email. Keep copyrighted fonts, certificate templates, participant lists, and production delivery records out of pull requests.
 
 ## License
 
-This repository does not currently include a license file. Until a license is added, no open-source license permissions are granted. Add an appropriate `LICENSE` file before presenting CertLoop as licensed open-source software.
+This repository does not currently contain a `LICENSE` file. No open-source license permissions are granted until the project owner adds one. The included Bitstream Vera font is supplied through ReportLab under its own font license; uploaded fonts and templates remain subject to their respective licenses.
