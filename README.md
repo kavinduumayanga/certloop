@@ -1,148 +1,169 @@
-# Certificate Dispatch
+<div align="center">
+  <h1>CertLoop</h1>
+  <p><strong>Generate. Personalize. Deliver.</strong></p>
+  <p>A local-first web application for creating personalized certificates and delivering them through Gmail SMTP.</p>
 
-A local-first FastAPI + React application for producing personalized, full-resolution participation certificates and individually delivering them through personal Gmail SMTP with an App Password. It persists every state transition in SQLite and never sends as a side effect of import, generation, preview, or automated tests.
+  <p>
+    <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
+    <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white">
+    <img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=20232A">
+    <img alt="TypeScript 5.8" src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white">
+  </p>
+</div>
 
-## What is included
+## Overview
 
-- Five-step responsive Material UI workflow with persistent session creation/selection on the import step, followed by template/font, generation, email composition, and a combined send/live-dashboard page.
-- UTF-8/BOM/quoted CSV parsing, flexible header mapping, atomic active-dataset replacement, immutable historical delivery snapshots, normalized email validation, duplicate blocking, row correction/exclusion, and formula-safe CSV reports.
-- Original-resolution JPG/PNG processing with a user-supplied TTF/OTF font, normalized drag/resize coordinates, solid-black participant names, centering, long-name auto-fit, legibility warnings, PDF/PNG output, and ZIP export.
-- Gmail SMTP with explicit EHLO/STARTTLS/authentication/envelope/DATA checks, persistent authenticated-session reuse, controlled connection recycling, environment-only App Password storage, configured-account/alias checks, individual messages, safe plain-text placeholders, stable audit headers, and privacy-safe stage diagnostics.
-- Durable `PENDING`, `SENDING`, `SENT`, `FAILED`, and `UNCERTAIN` states; background certificate-generation progress; one sequential background SMTP worker; adaptive pacing and optional rolling application cap; exponential retry for definite transient responses; pause/resume; safe failure retry; restart recovery; SSE updates; audit attempts and reports.
-- Backend pytest and frontend Vitest coverage. SMTP is mocked in tests; tests never make a real submission.
+CertLoop guides a local operator through a five-step workflow: import participants, customize a certificate template, generate personalized PDFs, prepare an email, and track delivery. Sessions keep separate workshops and their history organized, while SQLite stores progress locally.
 
-## Requirements
+Email delivery is explicit and operator-controlled. Importing, previewing, and generating certificates never sends email.
+
+## Features
+
+- Import participants from CSV, map common columns, validate required values and email syntax, detect duplicates, and edit or exclude rows.
+- Create named sessions with isolated participants, certificate settings, and delivery progress.
+- Upload a JPG or PNG certificate template and position the participant name visually.
+- Use a custom TTF or OTF font, automatic text fitting, and full-resolution personalized generation.
+- Preview generated certificates as PNG and download individual PDFs or a ZIP archive.
+- Customize the email sender, subject, body, workshop name, and supported placeholders.
+- Deliver individual certificate attachments through Gmail SMTP using an App Password.
+- Follow generation and delivery progress in real time through server-sent events.
+- Pause or resume sending, retry definite failures, and safely review uncertain outcomes.
+- Export a CSV delivery report with participant status and attempt history.
+
+## Screenshots
+
+Screenshots are not currently included in the repository.
+
+<!-- Add sanitized application screenshots here after placing them in docs/screenshots/. -->
+
+## Tech Stack
+
+| Area | Technology |
+|---|---|
+| Frontend | React 19, TypeScript, Vite, Material UI |
+| Backend | FastAPI, Pydantic, Uvicorn |
+| Data | SQLAlchemy, SQLite |
+| Certificates | Pillow, ReportLab |
+| Live updates | Server-sent events (SSE) |
+| Testing | pytest, Vitest, Testing Library |
+
+## Getting Started
+
+### Prerequisites
 
 - Python 3.12 or later
-- Node.js 20 or later and npm
-- A licensed Citadel Script `.ttf` or `.otf` file (not included)
-- For sending only: a personal Gmail account with 2-Step Verification and a Google App Password
+- Node.js 20 LTS or 22+ and npm
+- macOS or Linux for the included shell helper scripts
+- A JPG or PNG certificate template
+- A licensed TTF or OTF font for certificate names
+- A Gmail account with 2-Step Verification and an App Password, only if email delivery is needed
 
-## Local setup
+### Install
+
+From the repository root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[test]'
+python -m pip install -e '.[test]'
 
 cp .env.example .env
-# Add SMTP_USERNAME, SMTP_APP_PASSWORD, and SMTP_SENDER_EMAIL to .env
 
 cd frontend
-npm install
+npm ci
 cd ..
 ```
 
-Start the backend and frontend in separate terminals from the repository root:
+### Run locally
+
+Start both development servers:
 
 ```bash
-source .venv/bin/activate
-uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
+./start-dev.sh
+```
+
+Alternatively, run them in separate terminals:
+
+```bash
+./start-backend.sh
 ```
 
 ```bash
-cd frontend
-npm run dev
+./start-frontend.sh
 ```
 
-Open <http://127.0.0.1:5173>. Both servers bind to localhost by default. Do not change the host to `0.0.0.0` unless you have added network-level access control and understand that participant data would become reachable from your network.
+Open <http://127.0.0.1:5173>. FastAPI documentation is available at <http://127.0.0.1:8000/docs>.
 
-## Personal Gmail App Password setup
+The servers bind to localhost by default. Avoid exposing CertLoop to a network without adding appropriate authentication and access controls.
 
-1. Enable 2-Step Verification on the personal Gmail account. App Passwords may be unavailable for Advanced Protection accounts or accounts configured for security-key-only sign-in.
-2. While signed into the sending account, open Google Account → Security → App passwords and create a dedicated password for this local certificate tool. Revoke it after the workshop if it is no longer needed.
-3. Put the account and the generated 16-character password in the root `.env` file:
+## Environment Configuration
 
-   ```dotenv
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USERNAME=your.name@gmail.com
-   SMTP_APP_PASSWORD=xxxx xxxx xxxx xxxx
-   SMTP_SENDER_EMAIL=your.name@gmail.com
-   SMTP_ALLOWED_ALIASES=
-   SMTP_TIMEOUT_SECONDS=30
-   SMTP_CONNECTION_REUSE=true
-   SMTP_MAX_MESSAGES_PER_CONNECTION=25
-   SMTP_WORKERS=1
-   ```
+Copy [`.env.example`](.env.example) to `.env`. The example contains every supported setting and safe local defaults. The `.env` file is ignored by Git and should never be committed.
 
-4. Restart FastAPI after changing `.env`. The UI shows only whether SMTP is configured and the permitted sender identity; it never receives the App Password.
+Certificate creation works without SMTP credentials. Email delivery requires these values:
 
-The App Password, database files, uploads, generated certificates, and `.env` are git-ignored. Credentials are read only by the backend, are never placed in messages or logs, and are not exposed through frontend APIs. `SMTP_SENDER_EMAIL` should normally match the Gmail account. Only list aliases already configured and verified under Gmail's “Send mail as” settings in `SMTP_ALLOWED_ALIASES`.
+| Variable | Purpose |
+|---|---|
+| `SMTP_USERNAME` | Gmail account that owns the App Password |
+| `SMTP_APP_PASSWORD` | Google-generated App Password |
+| `SMTP_SENDER_EMAIL` | Primary address used in the `From` header |
 
-## Operating the workflow safely
-
-1. On **Import Participants**, create a **New Session** for a separate certificate-distribution workflow or select a previous session. The selected session is restored after refresh. Import a CSV such as [`samples/participants.csv`](samples/participants.csv); `Name,Email` is detected automatically. Re-importing replaces only that session's active dataset, with confirmation when generated certificates or delivery activity already exist. Correct/exclude invalid rows before generation.
-2. Upload the original certificate image and the exact licensed Citadel Script font. The first valid participant appears immediately in solid black; search for another participant or use the short/medium/longest quick checks. Drag and resize the live name box, tune size/offset/auto-fit, inspect the full-resolution backend-rendered preview, and save placement. Unsaved edits remain visible but are not used by generation until saved.
-3. Generate and inspect individual previews or download the ZIP. Generation is local and cannot send mail.
-4. Confirm SMTP is configured, enter the configured sender/allowed alias, subject, and plain-text body. Available placeholders are `{{name}}` and `{{workshop_name}}`.
-5. Open **Send Certificates**. Review the sender, imported/valid/generated/ready counts, status totals, and allowance. Bulk submission begins only after clicking **Send All Certificates** and typing the exact `SEND N` confirmation. The same page updates through SSE, supports Pause/Resume, and requires a second explicit confirmation before Retry Failed changes definite `FAILED` rows back to `PENDING`. `UNCERTAIN` entries are never retried automatically. Check Gmail Sent, the recipient, timestamp, and delivery reference shown in the table. Use **Found in Sent** only after confirming the message exists, or **Not sent** to convert it to a definite failure; actual resending still requires the separate Retry Failed confirmation. For a controlled test, import a small test CSV and use this same standard workflow.
-
-`SENT` means Gmail's SMTP server accepted the message submission without reporting refused recipients. It does not prove inbox placement, reading, or non-bounce.
-
-## Configuration
-
-See [`.env.example`](.env.example). Important controls:
+Common optional settings include:
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `APP_HOST` | `127.0.0.1` | Documented local bind address |
-| `MAX_UPLOAD_MB` | `25` | Per-upload hard limit |
-| `DELIVERY_CONCURRENCY` | `1` | Compatibility setting; delivery intentionally uses one sequential SMTP worker |
-| `MAX_EMAILS_PER_DAY` | disabled | Optional conservative application submission cap in any rolling 24-hour period; leave blank to monitor without an app cap |
-| `EMAIL_SEND_DELAY_SECONDS` | `5` | Conservative starting interval between SMTP submissions |
-| `MIN_EMAIL_SEND_DELAY_SECONDS` | `5` | Lowest interval between SMTP submission start times |
-| `MAX_EMAIL_SEND_DELAY_SECONDS` | `120` | Upper bound for adaptive backoff |
-| `HEALTHY_SENDS_BEFORE_SPEEDUP` | `5` | Healthy acknowledgments required before reducing the interval by 0.5 seconds |
-| `DATABASE_URL` | `sqlite:///./data/certificates.db` | Durable SQLAlchemy database |
-| `FRONTEND_ORIGIN` | `http://localhost:5173` | Sole allowed CORS origin |
-| `SMTP_HOST` / `SMTP_PORT` | `smtp.gmail.com` / `587` | Gmail SMTP STARTTLS endpoint |
-| `SMTP_USERNAME` | — | Personal Gmail account owning the App Password |
-| `SMTP_APP_PASSWORD` | — | Google-generated App Password; backend only |
-| `SMTP_SENDER_EMAIL` | — | Primary permitted From identity |
-| `SMTP_ALLOWED_ALIASES` | empty | Optional comma-separated permitted aliases |
-| `SMTP_TIMEOUT_SECONDS` | `30` | Connection and ordinary SMTP command timeout |
-| `SMTP_DATA_TIMEOUT_SECONDS` | `300` | DATA upload/final-ack timeout for large certificate attachments |
-| `SMTP_CONNECTION_REUSE` | `true` | Reuse the authenticated STARTTLS session for sequential messages |
-| `SMTP_MAX_MESSAGES_PER_CONNECTION` | `25` | Reauthenticate on a fresh connection after this many accepted messages |
-| `SMTP_WORKERS` | `1` | SMTP workers; intentionally constrained to one for Gmail safety |
+| `DATABASE_URL` | `sqlite:///./data/certificates.db` | Local SQLAlchemy database |
+| `DATA_DIR` | `./data` | Upload and generated-file directory |
+| `FRONTEND_ORIGIN` | `http://localhost:5173` | Allowed frontend origin |
+| `MAX_UPLOAD_MB` | `25` | Maximum upload size |
+| `MAX_EMAILS_PER_DAY` | Disabled | Optional rolling application-level cap |
+| `SMTP_ALLOWED_ALIASES` | Empty | Comma-separated Gmail aliases already verified for the account |
+| `SMTP_TIMEOUT_SECONDS` | `30` | Connection and SMTP command timeout |
+| `SMTP_DATA_TIMEOUT_SECONDS` | `300` | Attachment upload and final acknowledgment timeout |
 
-Rolling activity is persisted in SQLite and includes accepted messages, active reservations, uncertain submissions, and any preserved legacy test-send records from the preceding 24 hours. Definite failures and sends cancelled before SMTP submission release their reservation. Set `MAX_EMAILS_PER_DAY` only when an administrator wants an additional conservative application cap. Email sending limits depend on the SMTP provider, account type, and current provider restrictions; the application cannot determine or guarantee the provider's remaining allowance. One worker reuses an authenticated STARTTLS session and recycles it after the configured message count. It does not add a redundant `NOOP` round trip before every message: a confirmed failure during `MAIL FROM` or `RCPT TO` discards the session and reconnects safely. Definite temporary SMTP 4xx rejections increase the adaptive delay and are retried with bounded exponential backoff; recognized rate-limit responses pause the batch. A connection loss during DATA, where the provider may already have accepted the payload, becomes `UNCERTAIN` and is never retried automatically.
+The remaining pacing and connection settings are documented directly in [`.env.example`](.env.example). The application intentionally uses one sequential SMTP worker.
 
-Five-second pacing is an application target, not a promise that the provider will accept that rate. The interval is measured between submission start times, so a fast SMTP result waits only for the remainder instead of adding the full interval after completion. Temporary failures increase the interval automatically, recognized provider restrictions pause the batch, and provider account restrictions remain authoritative. The dashboard shows the current recipient, job-local processed outcomes, elapsed time, and a rolling estimate based on actual completed attempts.
+### Gmail App Password
 
-SMTP diagnostics use structured stage names such as `connect`, `ehlo`, `starttls`, `authentication`, attachment loading, MIME assembly, `mail_from`, `recipient`, and `data`. Each stage records elapsed milliseconds. Logs include only a one-way short job reference, response code, byte count, timings, and exception class—never the App Password, participant address, subject, body, or attachment contents.
+1. Enable 2-Step Verification for the Gmail account.
+2. In Google Account security settings, create an App Password for CertLoop.
+3. Add the Gmail address and generated password to `.env`.
+4. Set `SMTP_SENDER_EMAIL` to the same address, or use an address already configured in Gmail as a verified “Send mail as” alias.
+5. Restart the backend after changing `.env`.
 
-### DATA timeout diagnosis
+Do not use a normal Gmail password. Provider limits and policies remain authoritative, and SMTP acceptance does not guarantee inbox placement or that a message will be read.
 
-Generated certificates can be large because the original full-resolution template is preserved. A 9.4 MB PDF becomes roughly 12–13 MB after MIME/base64 encoding. Connection setup and ordinary SMTP commands use the short `SMTP_TIMEOUT_SECONDS`, while DATA upload and Gmail's final acknowledgment use `SMTP_DATA_TIMEOUT_SECONDS`. If DATA still ends without a final `250` response, the result remains `UNCERTAIN`; increasing a timeout never changes that safety rule. Use the structured `attachment_loaded`, `mime_ready`, `connection_ready`, and `accepted` timing events to distinguish local file work, TLS/authentication, upload time, and Gmail acknowledgment time.
+## How to Use
 
-## Tests and production checks
+1. **Import Participants** — Create or select a session, then import a CSV containing participant names and email addresses. Review validation results and fix or exclude invalid rows.
+2. **Template & Font** — Upload the certificate image and font. Position and resize the participant-name area, then save the placement.
+3. **Generate & Preview** — Generate personalized certificates, inspect previews, and optionally download PDFs or a ZIP archive.
+4. **Configure Email** — Confirm the SMTP sender and customize the workshop name, subject, and plain-text body.
+5. **Send Certificates** — Review the ready count, complete the explicit confirmation, and monitor delivery. Pause, resume, retry definite failures, or export the delivery report as needed.
 
-```bash
-source .venv/bin/activate
-pytest
+Delivery states are preserved as `PENDING`, `SENDING`, `SENT`, `FAILED`, or `UNCERTAIN`. An uncertain message is never retried automatically because the provider may already have accepted it.
 
-cd frontend
-npm test
-npm run build
-```
+## Contributing
 
-Tests cover CSV validation and duplicates, report formula defense, solid-black name rendering with the exact supplied font, long/impossible names, placement clipping, pixel-identical live/generated previews, all-recipient PDF validation, outdated-certificate protection, delivery transitions, atomic duplicate prevention, pause/resume safety, explicit failed-only retry, rolling quota accounting, restart recovery, persistent SMTP reuse/recycling, adaptive pacing, mocked STARTTLS/App Password stages, Gmail rate-limit pausing, privacy-safe diagnostics, definite/transient/uncertain outcomes, a 200-recipient mocked performance run, API import/report behavior, and dashboard rendering.
+Contributions are welcome. A typical workflow is:
 
-Before a real workshop run, back up the `data/` directory, perform a small controlled test batch, confirm the Gmail account and any verified alias, and retain the exported report. SQLite is appropriate for this single-operator local application; do not run multiple backend processes against the same batch.
+1. Fork the repository and create a focused branch.
+2. Make the change without committing credentials, participant data, generated certificates, or databases.
+3. Run the checks:
 
-## Project layout
+   ```bash
+   source .venv/bin/activate
+   python -m pytest
 
-```text
-backend/app/            FastAPI routes, SQLAlchemy models, services, worker
-backend/tests/          Unit and integration tests (mocked delivery)
-frontend/src/           React/TypeScript Material UI wizard and dashboard
-frontend/public/        Browser-accessible sample CSV
-samples/                Repository sample CSV
-data/                   Runtime SQLite/uploads/generated output (ignored)
-```
+   cd frontend
+   npm test
+   npm run build
+   ```
 
-## API notes
+4. Commit with a clear message and open a pull request describing the change and how it was tested.
 
-Interactive OpenAPI documentation is available at <http://127.0.0.1:8000/docs>. Header mapping for unusual CSVs is exposed as `name_column` and `email_column` multipart fields on the import endpoint. This makes it possible to map arbitrary columns even though the streamlined UI auto-detects common headings.
+Please keep pull requests small and avoid sending real email from automated tests.
+
+## License
+
+This repository does not currently include a license file. Until a license is added, no open-source license permissions are granted. Add an appropriate `LICENSE` file before presenting CertLoop as licensed open-source software.

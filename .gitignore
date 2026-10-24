@@ -24,6 +24,10 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 
 # Runtime databases and generated files
+# Ignore real participant imports and exported reports; keep sanitized examples.
+*.csv
+!samples/participants.csv
+!frontend/public/samples/participants.csv
 *.db
 *.db-*
 *.sqlite
