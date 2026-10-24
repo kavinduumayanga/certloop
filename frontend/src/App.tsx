@@ -43,6 +43,11 @@ import AllowanceCards from "./components/AllowanceCards";
 import ImportSummary from "./components/ImportSummary";
 import GenerationProgress from "./components/GenerationProgress";
 import SessionControls from "./components/SessionControls";
+import {
+  DEFAULT_EMAIL_BODY,
+  DEFAULT_EMAIL_SUBJECT,
+  renderEmailTemplate,
+} from "./emailTemplate";
 
 const steps = [
   "Import Participants",
@@ -592,6 +597,13 @@ export default function App() {
         setNotice("Email configuration saved");
       },
     );
+  const restoreDefaultEmailTemplate = () => {
+    changeEmailDraft({
+      email_subject: DEFAULT_EMAIL_SUBJECT,
+      email_body: DEFAULT_EMAIL_BODY,
+    });
+    setNotice("Default template restored. Save the email to keep it.");
+  };
   const startSend = () =>
     run(
       () => api.send(batch.id, confirm),
@@ -621,6 +633,18 @@ export default function App() {
         },
       );
   };
+  const emailPreviewName =
+    batch.participants.find(
+      (participant) => participant.is_valid && !participant.is_excluded,
+    )?.name ?? "Participant Name";
+  const emailPreviewSubject = renderEmailTemplate(
+    emailDraft?.email_subject ?? batch.email_subject,
+    emailPreviewName,
+  );
+  const emailPreviewBody = renderEmailTemplate(
+    emailDraft?.email_body ?? batch.email_body,
+    emailPreviewName,
+  );
   const content = [
     <Stack spacing={3} key="import">
       <SessionControls
@@ -1065,11 +1089,35 @@ export default function App() {
         value={emailDraft?.email_body ?? batch.email_body}
         onChange={(e) => changeEmailDraft({ email_body: e.target.value })}
       />
-      <Box>
+      <Paper variant="outlined" sx={{ p: 2.5 }}>
+        <Stack spacing={1.5}>
+          <Box>
+            <Typography fontWeight={700}>Email preview</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Previewing the saved participant name: {emailPreviewName}
+            </Typography>
+          </Box>
+          <Divider />
+          <Typography variant="subtitle2">
+            Subject: {emailPreviewSubject}
+          </Typography>
+          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+            {emailPreviewBody}
+          </Typography>
+        </Stack>
+      </Paper>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
         <Button variant="contained" onClick={emailSave}>
           Save email
         </Button>
-      </Box>
+        <Button
+          variant="outlined"
+          startIcon={<RefreshIcon />}
+          onClick={restoreDefaultEmailTemplate}
+        >
+          Restore Default Template
+        </Button>
+      </Stack>
     </Stack>,
     <Stack spacing={3} key="send">
       <Stack

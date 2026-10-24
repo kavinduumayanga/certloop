@@ -8,15 +8,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
 
-DEFAULT_EMAIL_SUBJECT = "Your Certificate – Introduction to DevOps Workshop"
+DEFAULT_EMAIL_SUBJECT = "Your Certificate of Participation"
 DEFAULT_EMAIL_BODY = """Hi {name},
 
-Thank you for joining the Introduction to DevOps Workshop, organized by MS Club of SLIIT with Sysco LABS. Your certificate of participation is attached.
+Thank you for participating in our event!
 
-Keep learning and building!
+We appreciate your time, enthusiasm, and involvement. Please find your personalized certificate of participation attached to this email.
+
+We hope you enjoyed the experience and look forward to seeing you at our future events.
 
 Best regards,
-MS Club of SLIIT"""
+Event Organizing Team"""
 
 
 def utcnow() -> datetime:

@@ -128,9 +128,18 @@ def test_generation_reports_durable_progress_and_completion(tmp_path, font_path)
 
 def test_new_batches_receive_email_defaults_without_overwriting_saved_content():
     first=client.post('/api/batches',json={'name':'First','workshop_name':'DevOps'}).json()
-    assert first['email_subject']==DEFAULT_EMAIL_SUBJECT
-    assert first['email_body']==DEFAULT_EMAIL_BODY
-    assert first['email_body'].startswith('Hi {name},')
+    assert first['email_subject']==DEFAULT_EMAIL_SUBJECT=='Your Certificate of Participation'
+    assert first['email_body']==DEFAULT_EMAIL_BODY=='''Hi {name},
+
+Thank you for participating in our event!
+
+We appreciate your time, enthusiasm, and involvement. Please find your personalized certificate of participation attached to this email.
+
+We hope you enjoyed the experience and look forward to seeing you at our future events.
+
+Best regards,
+Event Organizing Team'''
+    assert not any(value in first['email_body'] for value in ('DevOps','SLIIT','Sysco','Workshop'))
     with SessionLocal() as db:
         stored=db.get(Batch,first['id']);stored.email_subject='My saved subject';stored.email_body='My saved body';db.commit()
     second=client.post('/api/batches',json={'name':'Second','workshop_name':'DevOps'}).json()
