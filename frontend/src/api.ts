@@ -91,6 +91,8 @@ export const api = {
       body: f,
     });
   },
+  useDefaultFont: (id: string) =>
+    request<Batch>(`/batches/${id}/font/default`, { method: "POST" }),
   importCsv: (
     id: string,
     file: File,

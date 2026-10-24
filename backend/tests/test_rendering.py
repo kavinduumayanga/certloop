@@ -4,7 +4,16 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 import app.services.rendering as rendering
+from app.services.fonts import DEFAULT_FONT_NAME, default_font_path, font_display_name
 from app.services.rendering import is_render_current, render_certificate, render_preview_png
+
+
+def test_default_font_is_available_and_loadable():
+    path=default_font_path()
+    assert path.is_file()
+    assert DEFAULT_FONT_NAME=='Bitstream Vera Sans'
+    assert font_display_name(None)==DEFAULT_FONT_NAME
+    rendering.ImageFont.truetype(str(path),32)
 
 
 def test_participant_name_is_solid_black_without_color_channels(tmp_path: Path, font_path: Path):

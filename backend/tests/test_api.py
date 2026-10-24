@@ -105,13 +105,16 @@ def test_failed_replacement_import_keeps_active_dataset():
     assert [row['id'] for row in current['participants']]==[first['participants'][0]['id']]
 
 
-def test_generation_reports_durable_progress_and_completion(tmp_path, font_path):
+def test_generation_uses_default_font_without_an_upload(tmp_path):
     import time
     batch=client.post('/api/batches',json={'name':'Progress','workshop_name':'DevOps'}).json()
+    assert batch['font_path'] is False
+    assert batch['uses_custom_font'] is False
+    assert batch['font_name']=='Bitstream Vera Sans'
     client.post(f"/api/batches/{batch['id']}/participants/import",files={'file':('people.csv',b'Name,Email\nAda,ada@example.edu\nGrace,grace@example.edu\n','text/csv')})
     template=tmp_path/'template.png';Image.new('RGB',(500,300),'white').save(template)
     with SessionLocal() as db:
-        stored=db.get(Batch,batch['id']);stored.template_path=str(template);stored.font_path=str(font_path);db.commit()
+        stored=db.get(Batch,batch['id']);stored.template_path=str(template);db.commit()
     started=client.post(f"/api/batches/{batch['id']}/generate")
     assert started.status_code==200 and started.json()=={'started':True,'total':2}
     deadline=time.monotonic()+5
@@ -124,6 +127,46 @@ def test_generation_reports_durable_progress_and_completion(tmp_path, font_path)
     assert progress['status']=='COMPLETED'
     assert progress['total']==progress['succeeded']==2
     assert progress['failed']==progress['remaining']==0 and progress['percent']==100
+    assert all(row['certificate_current'] for row in current['participants'])
+
+
+def test_custom_font_is_session_specific_and_default_restore_preserves_sent_history(tmp_path, font_path):
+    first=client.post('/api/batches',json={'name':'Custom font session'}).json()
+    second=client.post('/api/batches',json={'name':'Default font session'}).json()
+    imported=client.post(f"/api/batches/{first['id']}/participants/import",files={
+        'file':('people.csv',b'Name,Email\nPending,pending@example.edu\nSent,sent@example.edu\n','text/csv'),
+    }).json()
+
+    uploaded=client.post(f"/api/batches/{first['id']}/font",files={
+        'file':('Citadel-Script.ttf',font_path.read_bytes(),'font/ttf'),
+    })
+    assert uploaded.status_code==200
+    custom=uploaded.json()
+    assert custom['font_path'] is True and custom['uses_custom_font'] is True
+    assert custom['font_name']!='Bitstream Vera Sans'
+    assert client.get(f"/api/batches/{first['id']}").json()['uses_custom_font'] is True
+    untouched=client.get(f"/api/batches/{second['id']}").json()
+    assert untouched['font_path'] is False and untouched['font_name']=='Bitstream Vera Sans'
+
+    pending_pdf=tmp_path/'pending.pdf';pending_pdf.write_bytes(b'%PDF')
+    sent_pdf=tmp_path/'sent.pdf';sent_pdf.write_bytes(b'%PDF')
+    render_version_path(pending_pdf).write_text(RENDER_STYLE_VERSION,encoding='utf-8')
+    render_version_path(sent_pdf).write_text(RENDER_STYLE_VERSION,encoding='utf-8')
+    with SessionLocal() as db:
+        pending=db.get(Participant,imported['participants'][0]['id'])
+        sent=db.get(Participant,imported['participants'][1]['id'])
+        pending.certificate_path=str(pending_pdf);pending.filename='pending.pdf'
+        sent.certificate_path=str(sent_pdf);sent.filename='sent.pdf';sent.status=DeliveryStatus.SENT
+        db.commit()
+
+    restored=client.post(f"/api/batches/{first['id']}/font/default")
+    assert restored.status_code==200
+    result=restored.json()
+    assert result['font_path'] is False and result['uses_custom_font'] is False
+    assert result['font_name']=='Bitstream Vera Sans'
+    rows={row['name']:row for row in result['participants']}
+    assert rows['Pending']['filename'] is None and rows['Pending']['certificate_current'] is False
+    assert rows['Sent']['filename']=='sent.pdf' and rows['Sent']['certificate_current'] is True
 
 
 def test_email_templates_are_initialized_and_persisted_per_session(monkeypatch):

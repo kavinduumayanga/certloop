@@ -23,6 +23,7 @@ from .services.csv_import import csv_safe, parse_participants, resolve_columns, 
 from .services.delivery import DeliveryManager
 from .services.generation import GenerationManager
 from .services.files import safe_filename
+from .services.fonts import font_display_name, resolve_font_path
 from .services.rendering import is_render_current, make_zip, render_certificate, render_preview_png
 from .services.smtp import DefiniteSendError, SMTPClient, message_id_for
 
@@ -135,6 +136,7 @@ def serialize_batch(batch: Batch, include_participants: bool = True) -> dict:
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
         "template_path": bool(batch.template_path), "font_path": bool(batch.font_path),
+        "font_name": font_display_name(batch.font_path), "uses_custom_font": bool(batch.font_path),
         "sender_email": batch.sender_email, "email_subject": batch.email_subject, "email_body": batch.email_body,
         "is_paused": batch.is_paused, "send_confirmed": batch.send_confirmed,
         "region": {"x": batch.region_x, "y": batch.region_y, "w": batch.region_w, "h": batch.region_h, "font_size": batch.font_size, "min_font_size": batch.min_font_size, "auto_fit": batch.auto_fit, "vertical_offset": batch.vertical_offset},
@@ -416,6 +418,19 @@ async def upload_font(batch_id: str, file: UploadFile = File(...), db: Session =
     return serialize_batch(batch)
 
 
+@app.post("/api/batches/{batch_id}/font/default")
+def use_default_font(batch_id: str, db: Session = Depends(get_db)):
+    batch = batch_or_404(db, batch_id)
+    if generation.is_running(batch_id):
+        raise HTTPException(409, "Wait for certificate generation to finish")
+    batch.font_path = None
+    for row in batch.participants:
+        if row.is_current_import and row.status not in {DeliveryStatus.SENT, DeliveryStatus.SENDING, DeliveryStatus.UNCERTAIN}:
+            row.certificate_path = row.preview_path = row.filename = row.legibility_warning = None
+    db.commit()
+    return serialize_batch(batch)
+
+
 @app.get("/api/batches/{batch_id}/template-file")
 def template_file(batch_id: str, db: Session = Depends(get_db)):
     batch = batch_or_404(db, batch_id)
@@ -428,15 +443,15 @@ def template_file(batch_id: str, db: Session = Depends(get_db)):
 @app.post("/api/batches/{batch_id}/render-preview")
 def render_live_preview(batch_id: str, payload: PreviewRequest, db: Session = Depends(get_db)):
     batch = batch_or_404(db, batch_id)
-    if not batch.template_path or not batch.font_path:
-        raise HTTPException(409, "Upload the certificate template and Citadel Script font first")
+    if not batch.template_path:
+        raise HTTPException(409, "Upload the certificate template first")
     participant = db.get(Participant, payload.participant_id)
     if not participant or participant.batch_id != batch.id or not participant.is_current_import or not participant.is_valid or participant.is_excluded:
         raise HTTPException(404, "Preview participant is not available")
     if payload.x + payload.w > 1 or payload.y + payload.h > 1:
         raise HTTPException(422, "Name region must stay inside the image")
     png, actual_size, warning = render_preview_png(
-        Path(batch.template_path), Path(batch.font_path), participant.name,
+        Path(batch.template_path), resolve_font_path(batch.font_path), participant.name,
         payload.model_dump(exclude={"participant_id"}),
     )
     return Response(
@@ -465,7 +480,7 @@ def update_region(batch_id: str, payload: RegionUpdate, db: Session = Depends(ge
 @app.post("/api/batches/{batch_id}/generate")
 def generate(batch_id: str, db: Session = Depends(get_db)):
     batch = batch_or_404(db, batch_id)
-    if not batch.template_path or not batch.font_path: raise HTTPException(409, "Upload a template and exact licensed font first")
+    if not batch.template_path: raise HTTPException(409, "Upload a certificate template first")
     eligible = [row for row in batch.participants if row.is_current_import and row.is_valid and not row.is_excluded and row.status in {DeliveryStatus.PENDING, DeliveryStatus.FAILED}]
     if not eligible: raise HTTPException(409, "No valid unsent participants are eligible for generation")
     if generation.is_running(batch_id) or batch.generation_status == "RUNNING":

@@ -13,7 +13,6 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  FormControlLabel,
   LinearProgress,
   MenuItem,
   Paper,
@@ -23,7 +22,6 @@ import {
   Step,
   StepButton,
   Stepper,
-  Switch,
   TextField,
   Toolbar,
   Typography,
@@ -47,6 +45,7 @@ import GenerationProgress from "./components/GenerationProgress";
 import SessionControls from "./components/SessionControls";
 import StatusCards from "./components/StatusCards";
 import BrandMark from "./components/BrandMark";
+import NameStylingControls from "./components/NameStylingControls";
 import {
   DEFAULT_EMAIL_BODY,
   DEFAULT_EMAIL_SUBJECT,
@@ -169,6 +168,7 @@ export default function App() {
     [emailColumn, setEmailColumn] = useState("");
   const [draftRegion, setDraftRegion] = useState<Region | null>(null),
     [regionDirty, setRegionDirty] = useState(false),
+    [regionSaving, setRegionSaving] = useState(false),
     [selectedPreviewId, setSelectedPreviewId] = useState("");
   const [previewUrl, setPreviewUrl] = useState(""),
     [previewWarning, setPreviewWarning] = useState(false),
@@ -299,7 +299,6 @@ export default function App() {
   useEffect(() => {
     if (
       !batch?.template_path ||
-      !batch.font_path ||
       !selectedPreviewId ||
       region.min_font_size > region.font_size
     ) {
@@ -340,6 +339,7 @@ export default function App() {
     batch?.id,
     batch?.template_path,
     batch?.font_path,
+    batch?.updated_at,
     selectedPreviewId,
     region.x,
     region.y,
@@ -515,16 +515,22 @@ export default function App() {
     setDraftRegion({ ...region, ...partial });
     setRegionDirty(true);
   };
-  const saveRegion = () =>
-    run(
-      () => api.updateRegion(batch.id, region),
-      (b) => {
-        setB(b);
-        setDraftRegion(b.region);
-        setRegionDirty(false);
-        setNotice("Name placement saved");
-      },
-    );
+  const saveRegion = async () => {
+    setRegionSaving(true);
+    try {
+      await run(
+        () => api.updateRegion(batch.id, region),
+        (b) => {
+          setB(b);
+          setDraftRegion(b.region);
+          setRegionDirty(false);
+          setNotice("Name placement saved");
+        },
+      );
+    } finally {
+      setRegionSaving(false);
+    }
+  };
   const requestStep = (target: number) => {
     if (step === 1 && target !== 1 && regionDirty) {
       setPendingStep(target);
@@ -817,17 +823,73 @@ export default function App() {
             )
           }
         />
-        <UploadButton
-          label={
-            batch.font_path ? "Replace font" : "Upload Citadel Script font"
-          }
-          accept=".ttf,.otf,font/ttf,font/otf"
-          onFile={(f) => run(() => api.upload(batch.id, "font", f), setB)}
-        />
+        <Box className="font-selection-panel">
+          <Stack direction="row" justifyContent="space-between" spacing={2}>
+            <Box minWidth={0}>
+              <Typography fontWeight={700}>Certificate name font</Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {batch.font_name}
+                {!batch.uses_custom_font && " (Default)"}
+              </Typography>
+            </Box>
+            <Chip
+              size="small"
+              color={batch.uses_custom_font ? "secondary" : "success"}
+              variant="outlined"
+              label={batch.uses_custom_font ? "Custom" : "Default"}
+            />
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
+            Bitstream Vera Sans is included by default. Upload a licensed TTF or
+            OTF—such as Citadel Script—to use it for this session only.
+          </Typography>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            <Button component="label" size="small" variant="outlined">
+              {batch.uses_custom_font ? "Replace custom font" : "Upload custom font"}
+              <input
+                hidden
+                type="file"
+                accept=".ttf,.otf,font/ttf,font/otf"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file)
+                    void run(
+                      () => api.upload(batch.id, "font", file),
+                      (updated) => {
+                        setB(updated);
+                        setNotice(`Using ${updated.font_name}`);
+                      },
+                    );
+                  event.currentTarget.value = "";
+                }}
+              />
+            </Button>
+            {batch.uses_custom_font && (
+              <Button
+                size="small"
+                onClick={() =>
+                  void run(
+                    () => api.useDefaultFont(batch.id),
+                    (updated) => {
+                      setB(updated);
+                      setNotice("Using Bitstream Vera Sans default font");
+                    },
+                  )
+                }
+              >
+                Use Default Font
+              </Button>
+            )}
+          </Stack>
+        </Box>
       </Box>
       <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
         {batch.template_path && <Chip color="success" variant="outlined" label="Template ready" />}
-        {batch.font_path && <Chip color="success" variant="outlined" label="Exact font ready" />}
+        <Chip
+          color="success"
+          variant="outlined"
+          label={`${batch.font_name}${batch.uses_custom_font ? "" : " (Default)"}`}
+        />
         {regionDirty && <Chip color="warning" variant="outlined" label="Unsaved placement" />}
       </Stack>
       <Autocomplete
@@ -934,12 +996,6 @@ export default function App() {
           </Typography>
         )}
       </Box>
-      {batch.template_path && !batch.font_path && (
-        <Alert severity="info">
-          Upload the licensed Citadel Script font to render an exact
-          personalized preview.
-        </Alert>
-      )}
       {previewWarning && (
         <Alert severity="warning">
           This name cannot fit inside the selected area at the configured
@@ -952,86 +1008,27 @@ export default function App() {
           variant="outlined"
           label={`Requested size: ${region.font_size}px`}
         />
-        {previewFontSize > 0 && (
-          <Chip
-            color={previewWarning ? "warning" : "success"}
-            variant="outlined"
-            label={`Rendered size: ${previewFontSize}px`}
-          />
-        )}
         <Chip
           variant="outlined"
           label={`Area: ${Math.round(region.w * 100)}% × ${Math.round(region.h * 100)}%`}
         />
       </Stack>
-      <Stack
-        direction={{ xs: "column", md: "row" }}
-        spacing={2}
-        alignItems={{ md: "center" }}
-        sx={{ p: 2, borderRadius: 3, border: "1px solid rgba(255,255,255,.08)", bgcolor: "rgba(2,6,23,.25)" }}
-      >
-        <TextField
-          type="number"
-          label="Font size"
-          value={region.font_size}
-          inputProps={{ min: 8, max: 1000 }}
-          onChange={(e) =>
-            updateRegion({ font_size: Math.max(8, +e.target.value || 8) })
-          }
-        />
-        <TextField
-          type="number"
-          label="Minimum font size"
-          value={region.min_font_size}
-          error={region.min_font_size > region.font_size}
-          helperText={
-            region.min_font_size > region.font_size
-              ? "Must not exceed font size"
-              : " "
-          }
-          inputProps={{ min: 8, max: 500 }}
-          onChange={(e) =>
-            updateRegion({ min_font_size: Math.max(8, +e.target.value || 8) })
-          }
-        />
-        <TextField
-          type="number"
-          label="Vertical offset (original px)"
-          value={region.vertical_offset}
-          inputProps={{ min: -1000, max: 1000 }}
-          onChange={(e) =>
-            updateRegion({
-              vertical_offset: Math.max(
-                -1000,
-                Math.min(1000, +e.target.value || 0),
-              ),
-            })
-          }
-        />
-        <FormControlLabel
-          control={
-            <Switch
-              checked={region.auto_fit}
-              onChange={(e) => updateRegion({ auto_fit: e.target.checked })}
-            />
-          }
-          label="Auto-fit long names"
-        />
-        <Button
-          variant="contained"
-          disabled={!regionDirty || region.min_font_size > region.font_size}
-          onClick={saveRegion}
-        >
-          Save placement
-        </Button>
-      </Stack>
+      <NameStylingControls
+        region={region}
+        dirty={regionDirty}
+        saving={regionSaving}
+        renderedFontSize={previewFontSize}
+        previewWarning={previewWarning}
+        onChange={updateRegion}
+        onSave={saveRegion}
+      />
     </Stack>,
     <Stack spacing={3} key="generate">
       <Box>
         <Typography variant="h5">Generate at full resolution</Typography>
         <Typography color="text.secondary">
           Each valid, included, unsent participant gets a unique PDF plus a PNG
-          preview. Names use the uploaded font in solid black, shrink to fit
+          preview. Names use the selected font in solid black, shrink to fit
           when enabled, and remain clipped to the placement area.
         </Typography>
       </Box>
@@ -1049,7 +1046,6 @@ export default function App() {
           startIcon={<AutoAwesomeIcon />}
           disabled={
             !batch.template_path ||
-            !batch.font_path ||
             !valid.length ||
             batch.generation.status === "RUNNING"
           }

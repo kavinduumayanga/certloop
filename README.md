@@ -22,7 +22,7 @@ Email delivery is explicit and operator-controlled. Importing, previewing, and g
 - Import participants from CSV, map common columns, validate required values and email syntax, detect duplicates, and edit or exclude rows.
 - Create named sessions with isolated participants, certificate settings, and delivery progress.
 - Upload a JPG or PNG certificate template and position the participant name visually.
-- Use a custom TTF or OTF font, automatic text fitting, and full-resolution personalized generation.
+- Generate with the included Bitstream Vera Sans default, or select a custom licensed TTF or OTF font per session.
 - Preview generated certificates as PNG and download individual PDFs or a ZIP archive.
 - Customize the email sender, subject, and body with the `{name}` participant placeholder.
 - Deliver individual certificate attachments through Gmail SMTP using an App Password.
@@ -55,7 +55,7 @@ Screenshots are not currently included in the repository.
 - Node.js 20 LTS or 22+ and npm
 - macOS or Linux for the included shell helper scripts
 - A JPG or PNG certificate template
-- A licensed TTF or OTF font for certificate names
+- A licensed TTF or OTF font only when you want to replace the included default
 - A Gmail account with 2-Step Verification and an App Password, only if email delivery is needed
 
 ### Install
@@ -136,12 +136,14 @@ Do not use a normal Gmail password. Provider limits and policies remain authorit
 ## How to Use
 
 1. **Import Participants** — Create or select a session, then import a CSV containing participant names and email addresses. Review validation results and fix or exclude invalid rows.
-2. **Template & Font** — Upload the certificate image and font. Position and resize the participant-name area, then save the placement.
+2. **Template & Font** — Upload the certificate image, optionally select a custom font, then position and resize the participant-name area.
 3. **Generate & Preview** — Generate personalized certificates, inspect previews, and optionally download PDFs or a ZIP archive.
 4. **Configure Email** — Confirm the SMTP sender and customize the subject and plain-text body. Use `{name}` to insert each participant's saved name.
 5. **Send Certificates** — Review the ready count, complete the explicit confirmation, and monitor delivery. Pause, resume, retry definite failures, or export the delivery report as needed.
 
 Delivery states are preserved as `PENDING`, `SENDING`, `SENT`, `FAILED`, or `UNCERTAIN`. An uncertain message is never retried automatically because the provider may already have accepted it.
+
+CertLoop uses **Bitstream Vera Sans** from the required ReportLab package as its offline default certificate font. Google Sans is not bundled or represented as the default because it is a Google brand typeface without general redistribution terms. Uploaded custom fonts remain the user's responsibility and are stored per session.
 
 ## Contributing
 

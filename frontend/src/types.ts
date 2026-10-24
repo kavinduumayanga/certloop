@@ -101,6 +101,8 @@ export interface Batch {
   updated_at: string;
   template_path: boolean;
   font_path: boolean;
+  font_name: string;
+  uses_custom_font: boolean;
   sender_email: string | null;
   email_subject: string;
   email_body: string;

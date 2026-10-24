@@ -9,6 +9,7 @@ from sqlalchemy import select
 from ..config import Settings
 from ..database import SessionLocal
 from ..models import Batch, DeliveryStatus, Participant
+from .fonts import resolve_font_path
 from .rendering import render_certificate
 
 
@@ -52,7 +53,7 @@ class GenerationManager:
         job_id = str(uuid.uuid4())
         with SessionLocal() as db:
             batch = db.get(Batch, batch_id)
-            if not batch or not batch.template_path or not batch.font_path:
+            if not batch or not batch.template_path:
                 return
             active_import_id = batch.active_import_id
             rows = db.scalars(select(Participant).where(
@@ -72,7 +73,7 @@ class GenerationManager:
             batch.generation_started_at = datetime.now(timezone.utc)
             batch.generation_finished_at = None
             template_path = Path(batch.template_path)
-            font_path = Path(batch.font_path)
+            font_path = resolve_font_path(batch.font_path)
             region = {
                 "x": batch.region_x, "y": batch.region_y, "w": batch.region_w, "h": batch.region_h,
                 "font_size": batch.font_size, "min_font_size": batch.min_font_size,
