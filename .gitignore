@@ -1,0 +1,51 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python environments, caches, and build artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Frontend dependencies and build artifacts
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Runtime databases and generated files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+data/uploads/*
+data/generated/*
+data/test-data/
+!data/uploads/.gitkeep
+!data/generated/.gitkeep
+*.zip
+
+# Temporary files and logs
+tmp/
+*.log
+*.pid
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+

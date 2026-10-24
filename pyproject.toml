@@ -1,0 +1,28 @@
+[project]
+name = "certificate-dispatch"
+version = "1.0.0"
+description = "Local-first certificate generation and Gmail SMTP delivery"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "sqlalchemy>=2.0,<3",
+  "pydantic-settings>=2.7,<3",
+  "python-multipart>=0.0.20,<1",
+  "email-validator>=2.2,<3",
+  "pillow>=11,<13",
+  "reportlab>=4.2,<5",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3,<10", "httpx>=0.28,<1", "pytest-cov>=6,<8"]
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+addopts = "-q"
+
