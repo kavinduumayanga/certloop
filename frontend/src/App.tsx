@@ -110,7 +110,6 @@ export default function App() {
     [retryOpen, setRetryOpen] = useState(false),
     [identity, setIdentity] = useState("");
   const [emailDraft, setEmailDraft] = useState<{
-    workshop_name: string;
     sender_email: string;
     email_subject: string;
     email_body: string;
@@ -154,7 +153,6 @@ export default function App() {
     setBatch(selected);
     setEmailDirty(false);
     setEmailDraft({
-      workshop_name: selected.workshop_name,
       sender_email: selected.sender_email ?? "",
       email_subject: selected.email_subject,
       email_body: selected.email_body,
@@ -177,7 +175,7 @@ export default function App() {
           available.find((session) => session.id === savedId) ?? available[0];
         const selected = selectedSummary
           ? await api.getBatch(selectedSummary.id)
-          : await api.createBatch("Workshop certificates", "Workshop");
+          : await api.createBatch("Workshop certificates");
         return {
           selected,
           available: selectedSummary ? available : [selected],
@@ -216,14 +214,12 @@ export default function App() {
   useEffect(() => {
     if (batch && !emailDirty) {
       setEmailDraft({
-        workshop_name: batch.workshop_name,
         sender_email: batch.sender_email ?? "",
         email_subject: batch.email_subject,
         email_body: batch.email_body,
       });
     }
   }, [
-    batch?.workshop_name,
     batch?.sender_email,
     batch?.email_subject,
     batch?.email_body,
@@ -374,7 +370,7 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const created = await api.createBatch(name, "Workshop");
+      const created = await api.createBatch(name);
       setSessions((current) => [
         created,
         ...current.filter((session) => session.id !== created.id),
@@ -570,7 +566,6 @@ export default function App() {
     partial: Partial<NonNullable<typeof emailDraft>>,
   ) => {
     setEmailDraft((current) => ({
-      workshop_name: current?.workshop_name ?? batch.workshop_name,
       sender_email: current?.sender_email ?? batch.sender_email ?? "",
       email_subject: current?.email_subject ?? batch.email_subject,
       email_body: current?.email_body ?? batch.email_body,
@@ -585,12 +580,10 @@ export default function App() {
           sender_email: emailDraft?.sender_email || identity,
           subject: emailDraft?.email_subject ?? batch.email_subject,
           body: emailDraft?.email_body ?? batch.email_body,
-          workshop_name: emailDraft?.workshop_name ?? batch.workshop_name,
         }),
       (b) => {
         setB(b);
         setEmailDraft({
-          workshop_name: b.workshop_name,
           sender_email: b.sender_email ?? "",
           email_subject: b.email_subject,
           email_body: b.email_body,
@@ -1038,9 +1031,9 @@ export default function App() {
       <Box>
         <Typography variant="h5">Compose the individual email</Typography>
         <Typography color="text.secondary">
-          Use {"{name}"} and {"{workshop_name}"}. The existing double-brace
-          format is also supported. HTML is intentionally not rendered,
-          preventing injected markup; each message receives only its own PDF.
+          Use {"{name}"} to insert each participant's saved CSV name. HTML is
+          intentionally not rendered, preventing injected markup; each message
+          receives only its own PDF.
         </Typography>
       </Box>
       {identity ? (
@@ -1054,11 +1047,6 @@ export default function App() {
           to the root .env file, then restart FastAPI.
         </Alert>
       )}
-      <TextField
-        label="Workshop name"
-        value={emailDraft?.workshop_name ?? batch.workshop_name}
-        onChange={(e) => changeEmailDraft({ workshop_name: e.target.value })}
-      />
       <TextField
         label="Sender email"
         type="email"

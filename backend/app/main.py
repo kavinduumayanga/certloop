@@ -131,7 +131,7 @@ def serialize_batch(batch: Batch, include_participants: bool = True) -> dict:
     generation_done = batch.generation_succeeded + batch.generation_failed
     participant_by_id = {participant.id: participant for participant in batch.participants}
     return {
-        "id": batch.id, "name": batch.name, "workshop_name": batch.workshop_name,
+        "id": batch.id, "name": batch.name,
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
         "template_path": bool(batch.template_path), "font_path": bool(batch.font_path),
@@ -185,7 +185,7 @@ def health():
 @app.post("/api/batches")
 def create_batch(payload: BatchCreate, db: Session = Depends(get_db)):
     name = clean_session_name(payload.name)
-    batch = Batch(name=name, name_normalized=normalized_session_name(name), workshop_name=payload.workshop_name.strip())
+    batch = Batch(name=name, name_normalized=normalized_session_name(name))
     db.add(batch)
     try:
         db.commit()
@@ -500,7 +500,7 @@ def configure_email(batch_id: str, payload: EmailConfig, db: Session = Depends(g
     batch = batch_or_404(db, batch_id)
     if str(payload.sender_email).casefold() not in allowed_senders():
         raise HTTPException(400, "Sender must match SMTP_SENDER_EMAIL or an address in SMTP_ALLOWED_ALIASES")
-    batch.sender_email, batch.email_subject, batch.email_body, batch.workshop_name = str(payload.sender_email), payload.subject, payload.body, payload.workshop_name
+    batch.sender_email, batch.email_subject, batch.email_body = str(payload.sender_email), payload.subject, payload.body
     db.commit(); return serialize_batch(batch)
 
 

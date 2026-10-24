@@ -139,6 +139,26 @@ def test_new_batches_receive_email_defaults_without_overwriting_saved_content():
     assert second['email_subject']==DEFAULT_EMAIL_SUBJECT and second['email_body']==DEFAULT_EMAIL_BODY
 
 
+def test_email_configuration_no_longer_accepts_or_changes_legacy_workshop_name(monkeypatch):
+    monkeypatch.setattr('app.main.allowed_senders',lambda:{'sender@example.edu'})
+    created=client.post('/api/batches',json={'name':'Email configuration'}).json()
+    with SessionLocal() as db:
+        stored=db.get(Batch,created['id']);stored.workshop_name='Preserved legacy value';db.commit()
+    response=client.put(f"/api/batches/{created['id']}/email",json={
+        'sender_email':'sender@example.edu',
+        'subject':'Certificate for {name}',
+        'body':'The DevOps Workshop certificate for {name} is attached.',
+        'workshop_name':'Must be ignored',
+    })
+    assert response.status_code==200
+    configured=response.json()
+    assert configured['email_subject']=='Certificate for {name}'
+    assert configured['email_body']=='The DevOps Workshop certificate for {name} is attached.'
+    assert 'workshop_name' not in configured
+    with SessionLocal() as db:
+        assert db.get(Batch,created['id']).workshop_name=='Preserved legacy value'
+
+
 def test_sessions_are_independent_and_fresh_session_progress_starts_at_zero():
     now=datetime.now(timezone.utc)
     with SessionLocal() as db:

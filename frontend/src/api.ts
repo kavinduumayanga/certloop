@@ -79,8 +79,8 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 export const api = {
-  createBatch: (name: string, workshop_name: string) =>
-    request<Batch>("/batches", json("POST", { name, workshop_name })),
+  createBatch: (name: string) =>
+    request<Batch>("/batches", json("POST", { name })),
   listBatches: () => request<Batch[]>("/batches"),
   getBatch: (id: string) => request<Batch>(`/batches/${id}`),
   upload: (id: string, kind: "template" | "font", file: File) => {

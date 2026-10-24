@@ -24,7 +24,7 @@ Email delivery is explicit and operator-controlled. Importing, previewing, and g
 - Upload a JPG or PNG certificate template and position the participant name visually.
 - Use a custom TTF or OTF font, automatic text fitting, and full-resolution personalized generation.
 - Preview generated certificates as PNG and download individual PDFs or a ZIP archive.
-- Customize the email sender, subject, body, workshop name, and supported placeholders.
+- Customize the email sender, subject, and body with the `{name}` participant placeholder.
 - Deliver individual certificate attachments through Gmail SMTP using an App Password.
 - Follow generation and delivery progress in real time through server-sent events.
 - Pause or resume sending, retry definite failures, and safely review uncertain outcomes.
@@ -138,7 +138,7 @@ Do not use a normal Gmail password. Provider limits and policies remain authorit
 1. **Import Participants** — Create or select a session, then import a CSV containing participant names and email addresses. Review validation results and fix or exclude invalid rows.
 2. **Template & Font** — Upload the certificate image and font. Position and resize the participant-name area, then save the placement.
 3. **Generate & Preview** — Generate personalized certificates, inspect previews, and optionally download PDFs or a ZIP archive.
-4. **Configure Email** — Confirm the SMTP sender and customize the workshop name, subject, and plain-text body.
+4. **Configure Email** — Confirm the SMTP sender and customize the subject and plain-text body. Use `{name}` to insert each participant's saved name.
 5. **Send Certificates** — Review the ready count, complete the explicit confirmation, and monitor delivery. Pause, resume, retry definite failures, or export the delivery report as needed.
 
 Delivery states are preserved as `PENDING`, `SENDING`, `SENT`, `FAILED`, or `UNCERTAIN`. An uncertain message is never retried automatically because the provider may already have accepted it.

@@ -10,7 +10,6 @@ from .models import DeliveryStatus
 
 class BatchCreate(BaseModel):
     name: str
-    workshop_name: str = "Workshop"
 
     @field_validator("name")
     @classmethod
@@ -43,7 +42,6 @@ class EmailConfig(BaseModel):
     sender_email: EmailStr
     subject: str = Field(min_length=1, max_length=500)
     body: str = Field(min_length=1, max_length=100_000)
-    workshop_name: str = Field(min_length=1, max_length=300)
 
 
 class ParticipantPatch(BaseModel):
@@ -76,7 +74,6 @@ class ParticipantOut(BaseModel):
 class BatchOut(BaseModel):
     id: str
     name: str
-    workshop_name: str
     template_path: str | None
     font_path: str | None
     sender_email: str | None

@@ -231,7 +231,7 @@ class DeliveryManager:
                 return
             name, email, key = participant.name, participant.email, participant.idempotency_key
             sender, path = batch.sender_email, Path(participant.certificate_path)
-            values = {"name": name, "workshop_name": batch.workshop_name}
+            values = {"name": name}
             subject = render_template(batch.email_subject, values)
             body = render_template(batch.email_body, values)
         logger.info("delivery_event=profile participant=%s stage=prepare duration_ms=%s", _record_ref(participant_id), round((time.perf_counter() - attempt_started) * 1000, 1))

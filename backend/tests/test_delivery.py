@@ -14,7 +14,7 @@ from app.services.smtp import DefiniteSendError, TransientSendError, UncertainSe
 
 def seed(status=DeliveryStatus.PENDING):
     with SessionLocal() as db:
-        batch=Batch(sender_email="sender@example.edu",send_confirmed=True,email_subject="Hi {{name}}",email_body="For {{workshop_name}}")
+        batch=Batch(sender_email="sender@example.edu",send_confirmed=True,email_subject="Hi {name}",email_body="For {workshop_name}; welcome {name}")
         db.add(batch);db.flush()
         path=Path("data/test-data/dummy.pdf");path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b"%PDF-test")
         render_version_path(path.resolve()).write_text(RENDER_STYLE_VERSION,encoding="utf-8")
@@ -23,9 +23,9 @@ def seed(status=DeliveryStatus.PENDING):
 
 
 class FakeClient:
-    def __init__(self,error=None): self.error=error;self.calls=0;self.closed=False
+    def __init__(self,error=None): self.error=error;self.calls=0;self.closed=False;self.messages=[]
     def send(self,*args):
-        self.calls+=1
+        self.calls+=1;self.messages.append(args)
         if self.error: raise self.error
         return "<smtp-123@example.edu>"
     def close(self): self.closed=True
@@ -37,9 +37,11 @@ def manager(client):
 
 
 def test_success_transition_records_smtp_message_id():
-    batch_id,pid=seed();delivery=manager(FakeClient());delivery._send_one(batch_id,pid)
+    batch_id,pid=seed();smtp=FakeClient();delivery=manager(smtp);delivery._send_one(batch_id,pid)
     with SessionLocal() as db:
         p=db.get(Participant,pid);assert p.status==DeliveryStatus.SENT;assert p.smtp_message_id=="<smtp-123@example.edu>";assert len(p.attempts)==1
+    assert smtp.messages[0][2]=='Hi Ada'
+    assert smtp.messages[0][3]=='For {workshop_name}; welcome Ada'
     allowance=delivery.allowance();assert allowance["successful"]==1;assert allowance["used"]==1
 
 
@@ -180,7 +182,7 @@ def test_pacing_targets_submission_start_times_not_completion_times(monkeypatch)
 def test_single_worker_processes_200_recipients_with_one_client_session():
     started=time.perf_counter()
     with SessionLocal() as db:
-        batch=Batch(sender_email="sender@example.edu",send_confirmed=True,email_subject="Hi {{name}}",email_body="Workshop: {{workshop_name}}",send_job_total=200)
+        batch=Batch(sender_email="sender@example.edu",send_confirmed=True,email_subject="Hi {name}",email_body="Your workshop certificate is attached.",send_job_total=200)
         db.add(batch);db.flush()
         path=Path("data/test-data/benchmark.pdf");path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b"%PDF-test")
         render_version_path(path.resolve()).write_text(RENDER_STYLE_VERSION,encoding="utf-8")

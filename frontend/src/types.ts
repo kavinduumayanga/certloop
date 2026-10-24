@@ -97,7 +97,6 @@ export interface ImportCounts {
 export interface Batch {
   id: string;
   name: string;
-  workshop_name: string;
   created_at: string;
   updated_at: string;
   template_path: boolean;

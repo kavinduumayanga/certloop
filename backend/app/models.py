@@ -36,6 +36,8 @@ class Batch(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(200), default="Certificate batch")
     name_normalized: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    # Retained only for non-destructive compatibility with existing databases.
+    # New code does not expose or use this legacy email-template value.
     workshop_name: Mapped[str] = mapped_column(String(300), default="Workshop")
     template_path: Mapped[str | None] = mapped_column(Text)
     font_path: Mapped[str | None] = mapped_column(Text)
