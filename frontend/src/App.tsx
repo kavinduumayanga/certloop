@@ -52,6 +52,12 @@ import {
   DEFAULT_EMAIL_SUBJECT,
   renderEmailTemplate,
 } from "./emailTemplate";
+import {
+  emailDraftFromBatch,
+  setSessionEmailDraft,
+  updateSessionEmailDraft,
+  type SessionEmailDrafts,
+} from "./sessionEmailState";
 
 const steps = [
   "Import Participants",
@@ -145,12 +151,16 @@ export default function App() {
     [confirm, setConfirm] = useState(""),
     [retryOpen, setRetryOpen] = useState(false),
     [identity, setIdentity] = useState("");
-  const [emailDraft, setEmailDraft] = useState<{
-    sender_email: string;
-    email_subject: string;
-    email_body: string;
-  } | null>(null);
-  const [emailDirty, setEmailDirty] = useState(false);
+  const [emailDrafts, setEmailDrafts] = useState<SessionEmailDrafts>({});
+  const [emailDirtyBySession, setEmailDirtyBySession] = useState<
+    Record<string, boolean>
+  >({});
+  const emailDraft = batch
+    ? (emailDrafts[batch.id] ?? emailDraftFromBatch(batch))
+    : null;
+  const emailDirty = batch
+    ? Boolean(emailDirtyBySession[batch.id])
+    : false;
   const [csvMapping, setCsvMapping] = useState<{
       file: File;
       headers: string[];
@@ -187,12 +197,17 @@ export default function App() {
     activeSessionId.current = selected.id;
     localStorage.setItem("certificateBatchId", selected.id);
     setBatch(selected);
-    setEmailDirty(false);
-    setEmailDraft({
-      sender_email: selected.sender_email ?? "",
-      email_subject: selected.email_subject,
-      email_body: selected.email_body,
-    });
+    setEmailDirtyBySession((current) => ({
+      ...current,
+      [selected.id]: false,
+    }));
+    setEmailDrafts((current) =>
+      setSessionEmailDraft(
+        current,
+        selected.id,
+        emailDraftFromBatch(selected),
+      ),
+    );
     setDraftRegion(selected.region);
     setRegionDirty(false);
     setCsvMapping(null);
@@ -249,13 +264,12 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (batch && !emailDirty) {
-      setEmailDraft({
-        sender_email: batch.sender_email ?? "",
-        email_subject: batch.email_subject,
-        email_body: batch.email_body,
-      });
+      setEmailDrafts((current) =>
+        setSessionEmailDraft(current, batch.id, emailDraftFromBatch(batch)),
+      );
     }
   }, [
+    batch?.id,
     batch?.sender_email,
     batch?.email_subject,
     batch?.email_body,
@@ -603,13 +617,13 @@ export default function App() {
   const changeEmailDraft = (
     partial: Partial<NonNullable<typeof emailDraft>>,
   ) => {
-    setEmailDraft((current) => ({
-      sender_email: current?.sender_email ?? batch.sender_email ?? "",
-      email_subject: current?.email_subject ?? batch.email_subject,
-      email_body: current?.email_body ?? batch.email_body,
-      ...partial,
+    setEmailDrafts((current) =>
+      updateSessionEmailDraft(current, batch, partial),
+    );
+    setEmailDirtyBySession((current) => ({
+      ...current,
+      [batch.id]: true,
     }));
-    setEmailDirty(true);
   };
   const emailSave = () =>
     run(
@@ -621,12 +635,13 @@ export default function App() {
         }),
       (b) => {
         setB(b);
-        setEmailDraft({
-          sender_email: b.sender_email ?? "",
-          email_subject: b.email_subject,
-          email_body: b.email_body,
-        });
-        setEmailDirty(false);
+        setEmailDrafts((current) =>
+          setSessionEmailDraft(current, b.id, emailDraftFromBatch(b)),
+        );
+        setEmailDirtyBySession((current) => ({
+          ...current,
+          [b.id]: false,
+        }));
         setNotice("Email configuration saved");
       },
     );

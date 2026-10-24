@@ -126,8 +126,9 @@ def test_generation_reports_durable_progress_and_completion(tmp_path, font_path)
     assert progress['failed']==progress['remaining']==0 and progress['percent']==100
 
 
-def test_new_batches_receive_email_defaults_without_overwriting_saved_content():
-    first=client.post('/api/batches',json={'name':'First','workshop_name':'DevOps'}).json()
+def test_email_templates_are_initialized_and_persisted_per_session(monkeypatch):
+    monkeypatch.setattr('app.main.allowed_senders',lambda:{'sender@example.edu'})
+    first=client.post('/api/batches',json={'name':'First'}).json()
     assert first['email_subject']==DEFAULT_EMAIL_SUBJECT=='Your Certificate of Participation'
     assert first['email_body']==DEFAULT_EMAIL_BODY=='''Hi {name},
 
@@ -140,12 +141,42 @@ We hope you enjoyed the experience and look forward to seeing you at our future 
 Best regards,
 Event Organizing Team'''
     assert not any(value in first['email_body'] for value in ('DevOps','SLIIT','Sysco','Workshop'))
-    with SessionLocal() as db:
-        stored=db.get(Batch,first['id']);stored.email_subject='My saved subject';stored.email_body='My saved body';db.commit()
-    second=client.post('/api/batches',json={'name':'Second','workshop_name':'DevOps'}).json()
-    refreshed=client.get(f"/api/batches/{first['id']}").json()
-    assert refreshed['email_subject']=='My saved subject' and refreshed['email_body']=='My saved body'
+
+    saved_first=client.put(f"/api/batches/{first['id']}/email",json={
+        'sender_email':'sender@example.edu',
+        'subject':'Session A subject for {name}',
+        'body':'Session A body for {name}',
+    })
+    assert saved_first.status_code==200
+
+    second=client.post('/api/batches',json={'name':'Second'}).json()
     assert second['email_subject']==DEFAULT_EMAIL_SUBJECT and second['email_body']==DEFAULT_EMAIL_BODY
+
+    # These GET requests match session switching and refresh hydration in the UI.
+    refreshed_first=client.get(f"/api/batches/{first['id']}").json()
+    refreshed_second=client.get(f"/api/batches/{second['id']}").json()
+    assert refreshed_first['email_subject']=='Session A subject for {name}'
+    assert refreshed_first['email_body']=='Session A body for {name}'
+    assert refreshed_second['email_subject']==DEFAULT_EMAIL_SUBJECT
+    assert refreshed_second['email_body']==DEFAULT_EMAIL_BODY
+
+    # Restore Default changes only the draft until the existing Save Email call.
+    client.put(f"/api/batches/{second['id']}/email",json={
+        'sender_email':'sender@example.edu',
+        'subject':'Temporary Session B subject',
+        'body':'Temporary Session B body',
+    })
+    restored_second=client.put(f"/api/batches/{second['id']}/email",json={
+        'sender_email':'sender@example.edu',
+        'subject':DEFAULT_EMAIL_SUBJECT,
+        'body':DEFAULT_EMAIL_BODY,
+    })
+    assert restored_second.status_code==200
+    assert restored_second.json()['email_subject']==DEFAULT_EMAIL_SUBJECT
+    assert restored_second.json()['email_body']==DEFAULT_EMAIL_BODY
+    unchanged_first=client.get(f"/api/batches/{first['id']}").json()
+    assert unchanged_first['email_subject']=='Session A subject for {name}'
+    assert unchanged_first['email_body']=='Session A body for {name}'
 
 
 def test_email_configuration_no_longer_accepts_or_changes_legacy_workshop_name(monkeypatch):

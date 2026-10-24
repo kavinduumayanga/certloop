@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .database import Base, SessionLocal, clean_session_name, engine, ensure_schema, get_db, normalized_session_name
-from .models import Batch, DeliveryAttempt, DeliveryStatus, Participant, SendRecord
+from .models import Batch, DEFAULT_EMAIL_BODY, DEFAULT_EMAIL_SUBJECT, DeliveryAttempt, DeliveryStatus, Participant, SendRecord
 from .schemas import BatchCreate, EmailConfig, ParticipantPatch, PreviewRequest, ReconcileRequest, RegionUpdate, StartSendRequest
 from .services.csv_import import csv_safe, parse_participants, resolve_columns, validate_participant
 from .services.delivery import DeliveryManager
@@ -185,7 +185,12 @@ def health():
 @app.post("/api/batches")
 def create_batch(payload: BatchCreate, db: Session = Depends(get_db)):
     name = clean_session_name(payload.name)
-    batch = Batch(name=name, name_normalized=normalized_session_name(name))
+    batch = Batch(
+        name=name,
+        name_normalized=normalized_session_name(name),
+        email_subject=DEFAULT_EMAIL_SUBJECT,
+        email_body=DEFAULT_EMAIL_BODY,
+    )
     db.add(batch)
     try:
         db.commit()
