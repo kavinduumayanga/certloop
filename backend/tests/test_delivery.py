@@ -18,7 +18,7 @@ def seed(status=DeliveryStatus.PENDING):
         db.add(batch);db.flush()
         path=Path("data/test-data/dummy.pdf");path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b"%PDF-test")
         render_version_path(path.resolve()).write_text(RENDER_STYLE_VERSION,encoding="utf-8")
-        p=Participant(batch_id=batch.id,row_number=2,name="Ada",email="ada@example.edu",normalized_email="ada@example.edu",is_valid=True,certificate_path=str(path.resolve()),idempotency_key=f"cert-{batch.id}-p",status=status)
+        p=Participant(batch_id=batch.id,row_number=2,name="Ada",email="ada@example.edu",normalized_email="ada@example.edu",is_valid=True,certificate_path=str(path.resolve()),certificate_revision=batch.certificate_revision,idempotency_key=f"cert-{batch.id}-p",status=status)
         db.add(p);db.commit();return batch.id,p.id
 
 
@@ -40,6 +40,7 @@ def test_success_transition_records_smtp_message_id():
     batch_id,pid=seed();smtp=FakeClient();delivery=manager(smtp);delivery._send_one(batch_id,pid)
     with SessionLocal() as db:
         p=db.get(Participant,pid);assert p.status==DeliveryStatus.SENT;assert p.smtp_message_id=="<smtp-123@example.edu>";assert len(p.attempts)==1
+        assert p.attempts[0].certificate_path==p.certificate_path
     assert smtp.messages[0][2]=='Hi Ada'
     assert smtp.messages[0][3]=='For {workshop_name}; welcome Ada'
     allowance=delivery.allowance();assert allowance["successful"]==1;assert allowance["used"]==1
@@ -187,7 +188,7 @@ def test_single_worker_processes_200_recipients_with_one_client_session():
         path=Path("data/test-data/benchmark.pdf");path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b"%PDF-test")
         render_version_path(path.resolve()).write_text(RENDER_STYLE_VERSION,encoding="utf-8")
         for index in range(200):
-            db.add(Participant(batch_id=batch.id,row_number=index+2,name=f"Participant {index}",email=f"user{index}@example.edu",normalized_email=f"user{index}@example.edu",is_valid=True,certificate_path=str(path.resolve()),idempotency_key=f"cert-{batch.id}-{index}"))
+            db.add(Participant(batch_id=batch.id,row_number=index+2,name=f"Participant {index}",email=f"user{index}@example.edu",normalized_email=f"user{index}@example.edu",is_valid=True,certificate_path=str(path.resolve()),certificate_revision=batch.certificate_revision,idempotency_key=f"cert-{batch.id}-{index}"))
         db.commit();batch_id=batch.id
     client=FakeClient();factory_calls=0
     def factory():

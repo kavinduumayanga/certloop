@@ -1,4 +1,5 @@
 import io
+import uuid
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,8 +112,9 @@ def render_certificate(template_path: Path, font_path: Path, output_dir: Path, p
 
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{safe_filename(name)}-{participant_id[:8]}"
-    preview_path = output_dir / f"{stem}.png"
-    pdf_path = output_dir / f"{stem}.pdf"
+    versioned_stem = f"{stem}-{uuid.uuid4().hex[:12]}"
+    preview_path = output_dir / f"{versioned_stem}.png"
+    pdf_path = output_dir / f"{versioned_stem}.pdf"
     rendered.image.save(preview_path, "PNG", optimize=True)
     page_w, page_h = rendered.image.size
     pdf = canvas.Canvas(str(pdf_path), pagesize=(page_w, page_h), pageCompression=1)
@@ -132,7 +134,7 @@ def render_certificate(template_path: Path, font_path: Path, output_dir: Path, p
     pdf.showPage()
     pdf.save()
     render_version_path(pdf_path).write_text(RENDER_STYLE_VERSION, encoding="utf-8")
-    return RenderResult(pdf_path.name, pdf_path, preview_path, rendered.font_size, rendered.warning)
+    return RenderResult(f"{stem}.pdf", pdf_path, preview_path, rendered.font_size, rendered.warning)
 
 
 def make_zip(files: list[tuple[Path, str]], output: Path) -> Path:

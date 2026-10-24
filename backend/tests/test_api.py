@@ -2,7 +2,10 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 import uuid
+from pathlib import Path
 
 from app.database import SessionLocal
 from app.main import app
@@ -106,7 +109,6 @@ def test_failed_replacement_import_keeps_active_dataset():
 
 
 def test_generation_uses_default_font_without_an_upload(tmp_path):
-    import time
     batch=client.post('/api/batches',json={'name':'Progress','workshop_name':'DevOps'}).json()
     assert batch['font_path'] is False
     assert batch['uses_custom_font'] is False
@@ -128,6 +130,138 @@ def test_generation_uses_default_font_without_an_upload(tmp_path):
     assert progress['total']==progress['succeeded']==2
     assert progress['failed']==progress['remaining']==0 and progress['percent']==100
     assert all(row['certificate_current'] for row in current['participants'])
+
+
+def test_sent_participant_can_be_regenerated_without_changing_delivery_history(tmp_path):
+    batch=client.post('/api/batches',json={'name':'Sent regeneration'}).json()
+    imported=client.post(f"/api/batches/{batch['id']}/participants/import",files={
+        'file':('people.csv',b'Name,Email\nAda,ada@example.edu\n','text/csv'),
+    }).json()
+    participant_id=imported['participants'][0]['id']
+    template=tmp_path/'template.png';Image.new('RGB',(600,400),'white').save(template)
+    old_pdf=tmp_path/'delivered.pdf';old_pdf.write_bytes(b'%PDF-delivered')
+    old_preview=tmp_path/'delivered.png';Image.new('RGB',(600,400),'white').save(old_preview)
+    render_version_path(old_pdf).write_text(RENDER_STYLE_VERSION,encoding='utf-8')
+    with SessionLocal() as db:
+        stored_batch=db.get(Batch,batch['id']);stored_batch.template_path=str(template)
+        participant=db.get(Participant,participant_id)
+        participant.status=DeliveryStatus.SENT
+        participant.sent_at=datetime.now(timezone.utc)
+        participant.certificate_path=str(old_pdf)
+        participant.preview_path=str(old_preview)
+        participant.filename='delivered.pdf'
+        participant.certificate_revision=stored_batch.certificate_revision
+        db.add(DeliveryAttempt(
+            participant_id=participant.id,
+            attempt_number=1,
+            outcome='SENT',
+            certificate_path=str(old_pdf),
+            certificate_filename='delivered.pdf',
+        ))
+        db.commit()
+
+    started=client.post(f"/api/batches/{batch['id']}/participants/{participant_id}/generate")
+    assert started.status_code==200 and started.json()['participant_id']==participant_id
+    deadline=time.monotonic()+5
+    current=None
+    while time.monotonic()<deadline:
+        current=client.get(f"/api/batches/{batch['id']}").json()
+        if current['generation']['job_id'] and current['generation']['status']!='RUNNING':
+            break
+        time.sleep(.02)
+    assert current is not None and current['generation']['status']=='COMPLETED'
+    regenerated=current['participants'][0]
+    assert regenerated['status']=='SENT' and regenerated['certificate_current'] is True
+
+    with SessionLocal() as db:
+        participant=db.get(Participant,participant_id)
+        attempt=participant.attempts[0]
+        assert participant.status==DeliveryStatus.SENT
+        assert participant.certificate_path!=str(old_pdf)
+        assert Path(participant.certificate_path).exists() and old_pdf.exists()
+        assert attempt.certificate_path==str(old_pdf)
+        assert attempt.certificate_filename=='delivered.pdf'
+        assert db.query(SendRecord).count()==0
+
+
+def test_bulk_generation_accepts_sent_participants_and_remains_session_isolated(tmp_path):
+    first=client.post('/api/batches',json={'name':'Generate sent'}).json()
+    second=client.post('/api/batches',json={'name':'Other generation session'}).json()
+    imported=client.post(f"/api/batches/{first['id']}/participants/import",files={
+        'file':('people.csv',b'Name,Email\nSent Person,sent@example.edu\n','text/csv'),
+    }).json()
+    template=tmp_path/'template.png';Image.new('RGB',(500,300),'white').save(template)
+    with SessionLocal() as db:
+        db.get(Batch,first['id']).template_path=str(template)
+        db.get(Participant,imported['participants'][0]['id']).status=DeliveryStatus.SENT
+        db.commit()
+    started=client.post(f"/api/batches/{first['id']}/generate")
+    assert started.status_code==200 and started.json()['total']==1
+    deadline=time.monotonic()+5
+    while time.monotonic()<deadline:
+        current=client.get(f"/api/batches/{first['id']}").json()
+        if current['generation']['job_id'] and current['generation']['status']!='RUNNING': break
+        time.sleep(.02)
+    assert current['participants'][0]['status']=='SENT'
+    assert current['participants'][0]['certificate_current'] is True
+    untouched=client.get(f"/api/batches/{second['id']}").json()
+    assert untouched['participants']==[] and untouched['generation']['total']==0
+    cross_session=client.post(
+        f"/api/batches/{second['id']}/participants/{imported['participants'][0]['id']}/generate"
+    )
+    assert cross_session.status_code==404
+
+
+def test_duplicate_single_participant_generation_is_rejected(tmp_path, monkeypatch):
+    import app.services.generation as generation_service
+
+    batch=client.post('/api/batches',json={'name':'Duplicate regeneration'}).json()
+    imported=client.post(f"/api/batches/{batch['id']}/participants/import",files={
+        'file':('people.csv',b'Name,Email\nAda,ada@example.edu\n','text/csv'),
+    }).json()
+    template=tmp_path/'template.png';Image.new('RGB',(500,300),'white').save(template)
+    with SessionLocal() as db:
+        db.get(Batch,batch['id']).template_path=str(template);db.commit()
+    entered=threading.Event();release=threading.Event()
+    original=generation_service.render_certificate
+    def blocked_render(*args,**kwargs):
+        entered.set();release.wait(timeout=3);return original(*args,**kwargs)
+    monkeypatch.setattr(generation_service,'render_certificate',blocked_render)
+    participant_id=imported['participants'][0]['id']
+    first=client.post(f"/api/batches/{batch['id']}/participants/{participant_id}/generate")
+    assert first.status_code==200 and entered.wait(timeout=2)
+    duplicate=client.post(f"/api/batches/{batch['id']}/participants/{participant_id}/generate")
+    assert duplicate.status_code==409
+    release.set()
+    deadline=time.monotonic()+5
+    while time.monotonic()<deadline:
+        current=client.get(f"/api/batches/{batch['id']}").json()
+        if current['generation']['status']!='RUNNING': break
+        time.sleep(.02)
+    assert current['generation']['status']=='COMPLETED'
+
+
+def test_single_regeneration_uses_latest_saved_participant_name(tmp_path):
+    batch=client.post('/api/batches',json={'name':'Latest participant name'}).json()
+    imported=client.post(f"/api/batches/{batch['id']}/participants/import",files={
+        'file':('people.csv',b'Name,Email\nAda,ada@example.edu\n','text/csv'),
+    }).json()
+    participant_id=imported['participants'][0]['id']
+    changed=client.patch(f'/api/participants/{participant_id}',json={'name':'Ada Updated'})
+    assert changed.status_code==200
+    template=tmp_path/'template.png';Image.new('RGB',(500,300),'white').save(template)
+    with SessionLocal() as db:
+        db.get(Batch,batch['id']).template_path=str(template);db.commit()
+    assert client.post(
+        f"/api/batches/{batch['id']}/participants/{participant_id}/generate"
+    ).status_code==200
+    deadline=time.monotonic()+5
+    while time.monotonic()<deadline:
+        current=client.get(f"/api/batches/{batch['id']}").json()
+        if current['generation']['job_id'] and current['generation']['status']!='RUNNING': break
+        time.sleep(.02)
+    assert current['participants'][0]['name']=='Ada Updated'
+    assert current['participants'][0]['filename'].startswith('Ada-Updated-')
 
 
 def test_custom_font_is_session_specific_and_default_restore_preserves_sent_history(tmp_path, font_path):
@@ -166,7 +300,7 @@ def test_custom_font_is_session_specific_and_default_restore_preserves_sent_hist
     assert result['font_name']=='Bitstream Vera Sans'
     rows={row['name']:row for row in result['participants']}
     assert rows['Pending']['filename'] is None and rows['Pending']['certificate_current'] is False
-    assert rows['Sent']['filename']=='sent.pdf' and rows['Sent']['certificate_current'] is True
+    assert rows['Sent']['filename']=='sent.pdf' and rows['Sent']['certificate_current'] is False
 
 
 def test_email_templates_are_initialized_and_persisted_per_session(monkeypatch):
@@ -404,7 +538,8 @@ def test_pre_style_change_certificate_is_outdated_and_not_ready(tmp_path):
     current=client.get(f"/api/batches/{batch['id']}").json()
     assert current['ready_count']==0 and current['outdated_certificate_count']==1
     assert current['participants'][0]['certificate_current'] is False
-    assert client.get(f"/api/participants/{participant_id}/certificate").status_code==409
+    # An old artifact remains inspectable/downloadable, but is never send-ready.
+    assert client.get(f"/api/participants/{participant_id}/certificate").status_code==200
 
 
 def test_removed_test_send_endpoint_is_not_available():
@@ -417,7 +552,11 @@ def test_bulk_send_requires_current_pdf_for_every_pending_eligible_participant(t
     imported=client.post(f"/api/batches/{batch['id']}/participants/import",files={'file':('people.csv',b'Name,Email\nAda,ada@example.edu\nGrace,grace@example.edu\n','text/csv')}).json()
     pdf=tmp_path/'current.pdf';pdf.write_bytes(b'%PDF-current');render_version_path(pdf).write_text(RENDER_STYLE_VERSION,encoding='utf-8')
     with SessionLocal() as db:
-        db.get(Participant,imported['participants'][0]['id']).certificate_path=str(pdf);db.commit()
+        stored_batch=db.get(Batch,batch['id'])
+        participant=db.get(Participant,imported['participants'][0]['id'])
+        participant.certificate_path=str(pdf)
+        participant.certificate_revision=stored_batch.certificate_revision
+        db.commit()
     response=client.post(f"/api/batches/{batch['id']}/send",json={'confirmation':'SEND 1'})
     assert response.status_code==409
     assert 'all 2 pending eligible participants' in response.json()['detail']

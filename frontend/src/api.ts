@@ -130,6 +130,11 @@ export const api = {
     request<{ started: boolean; total: number }>(`/batches/${id}/generate`, {
       method: "POST",
     }),
+  regenerateParticipant: (batchId: string, participantId: string) =>
+    request<{ started: boolean; total: number; participant_id: string }>(
+      `/batches/${batchId}/participants/${participantId}/generate`,
+      { method: "POST" },
+    ),
   configureEmail: (id: string, data: unknown) =>
     request<Batch>(`/batches/${id}/email`, json("PUT", data)),
   smtpStatus: () =>

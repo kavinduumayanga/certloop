@@ -46,6 +46,7 @@ import SessionControls from "./components/SessionControls";
 import StatusCards from "./components/StatusCards";
 import BrandMark from "./components/BrandMark";
 import NameStylingControls from "./components/NameStylingControls";
+import GeneratedCertificatePanel from "./components/GeneratedCertificatePanel";
 import {
   DEFAULT_EMAIL_BODY,
   DEFAULT_EMAIL_SUBJECT,
@@ -175,6 +176,11 @@ export default function App() {
     [previewFontSize, setPreviewFontSize] = useState(0),
     [previewRendering, setPreviewRendering] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+  const [generatedParticipantId, setGeneratedParticipantId] = useState("");
+  const [regenerationRequest, setRegenerationRequest] = useState<{
+    participantId: string;
+    previousJobId: string | null;
+  } | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false),
     [pendingStep, setPendingStep] = useState<number | null>(null);
   const previewRef = useRef<HTMLDivElement>(null),
@@ -215,6 +221,8 @@ export default function App() {
     setEmailColumn("");
     setSearch("");
     setFilter("ALL");
+    setGeneratedParticipantId("");
+    setRegenerationRequest(null);
     if (returnToImport) setStep(0);
   };
   const bootstrap = () => {
@@ -296,6 +304,38 @@ export default function App() {
       setSelectedPreviewId(valid[0].id);
     if (!valid.length) setSelectedPreviewId("");
   }, [batch?.participants, selectedPreviewId]);
+  useEffect(() => {
+    if (!batch) return;
+    if (
+      generatedParticipantId &&
+      batch.participants.some((row) => row.id === generatedParticipantId)
+    )
+      return;
+    const firstGenerated = batch.participants.find((row) => row.filename);
+    const firstEligible = batch.participants.find(
+      (row) => row.is_valid && !row.is_excluded,
+    );
+    setGeneratedParticipantId(firstGenerated?.id ?? firstEligible?.id ?? "");
+  }, [batch?.id, batch?.participants, generatedParticipantId]);
+  useEffect(() => {
+    if (!batch || !regenerationRequest) return;
+    const changedJob =
+      Boolean(batch.generation.job_id) &&
+      batch.generation.job_id !== regenerationRequest.previousJobId;
+    if (changedJob && batch.generation.status !== "RUNNING") {
+      const participant = batch.participants.find(
+        (row) => row.id === regenerationRequest.participantId,
+      );
+      setRegenerationRequest(null);
+      if (batch.generation.status === "COMPLETED")
+        setNotice(`${participant?.name ?? "Certificate"} regenerated`);
+    }
+  }, [
+    batch?.generation.job_id,
+    batch?.generation.status,
+    batch?.participants,
+    regenerationRequest,
+  ]);
   useEffect(() => {
     if (
       !batch?.template_path ||
@@ -666,6 +706,22 @@ export default function App() {
         setNotice("Delivery worker started");
       },
     );
+  const regenerateParticipant = (participantId: string) => {
+    if (regenerationRequest || batch.generation.status === "RUNNING") return;
+    setError("");
+    setRegenerationRequest({
+      participantId,
+      previousJobId: batch.generation.job_id,
+    });
+    void api.regenerateParticipant(batch.id, participantId).catch((cause) => {
+      setRegenerationRequest(null);
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Certificate regeneration could not start",
+      );
+    });
+  };
   const reconcile = (
     id: string,
     action: "CONFIRM_SENT" | "CONFIRM_NOT_SENT",
@@ -1027,7 +1083,7 @@ export default function App() {
       <Box>
         <Typography variant="h5">Generate at full resolution</Typography>
         <Typography color="text.secondary">
-          Each valid, included, unsent participant gets a unique PDF plus a PNG
+          Each valid, included participant gets a unique PDF plus a PNG
           preview. Names use the selected font in solid black, shrink to fit
           when enabled, and remain clipped to the placement area.
         </Typography>
@@ -1040,7 +1096,7 @@ export default function App() {
           previewing, downloading, or sending.
         </Alert>
       )}
-      <Stack direction="row" spacing={2}>
+      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
         <Button
           variant="contained"
           startIcon={<AutoAwesomeIcon />}
@@ -1067,7 +1123,7 @@ export default function App() {
               );
           }}
         >
-          Generate certificates
+          Generate All
         </Button>
         <Button
           component="a"
@@ -1079,25 +1135,14 @@ export default function App() {
         </Button>
       </Stack>
       <GenerationProgress progress={batch.generation} />
-      {currentCertificate ? (
-        <Paper sx={{ p: 1.5, bgcolor: "rgba(2,6,23,.35)" }}>
-          <img
-            style={{
-              width: "100%",
-              maxHeight: 520,
-              objectFit: "contain",
-              borderRadius: 10,
-            }}
-            src={`/api/participants/${currentCertificate.id}/preview`}
-            alt="Personalized certificate preview"
-          />
-        </Paper>
-      ) : (
-        <Alert severity="info">
-          A current personalized preview appears here as generation completes.
-        </Alert>
-      )}
-      <ParticipantTable rows={batch.participants} />
+      <GeneratedCertificatePanel
+        participants={batch.participants}
+        selectedId={generatedParticipantId}
+        generationRunning={batch.generation.status === "RUNNING"}
+        regeneratingId={regenerationRequest?.participantId ?? null}
+        onSelect={setGeneratedParticipantId}
+        onRegenerate={regenerateParticipant}
+      />
     </Stack>,
     <Stack spacing={3} key="email">
       <Box>

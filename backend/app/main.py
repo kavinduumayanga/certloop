@@ -92,13 +92,23 @@ def revalidate_active_participants(batch: Batch) -> None:
         row.validation_error = "; ".join(errors) or None
 
 
+def advance_certificate_revision(batch: Batch) -> None:
+    batch.certificate_revision = str(uuid.uuid4())
+
+
 def serialize_batch(batch: Batch, include_participants: bool = True) -> dict:
     counts = {status.value: 0 for status in DeliveryStatus}
     imported = [p for p in batch.participants if p.is_current_import]
     active = [p for p in imported if p.is_valid and not p.is_excluded]
     for participant in active:
         counts[participant.status.value] += 1
-    current = {p.id: is_render_current(p.certificate_path) for p in imported}
+    current = {
+        p.id: bool(
+            p.certificate_revision == batch.certificate_revision
+            and is_render_current(p.certificate_path)
+        )
+        for p in imported
+    }
     ready_count = sum(p.status == DeliveryStatus.PENDING and current[p.id] for p in active)
     outdated_count = sum(bool(p.certificate_path) and not current[p.id] for p in active)
     started_at = batch.send_job_started_at
@@ -175,7 +185,7 @@ def serialize_batch(batch: Batch, include_participants: bool = True) -> dict:
             "started_at": started_at.isoformat() if started_at else None,
             "finished_at": finished_at.isoformat() if finished_at else None,
         },
-        "participants": [{"id": p.id, "row_number": p.row_number, "name": p.name, "email": p.email, "is_valid": p.is_valid, "is_excluded": p.is_excluded, "validation_error": p.validation_error, "status": p.status.value, "filename": p.filename, "certificate_current": current[p.id], "legibility_warning": p.legibility_warning, "generation_error": p.generation_error, "smtp_message_id": p.smtp_message_id, "sent_at": p.sent_at.isoformat() if p.sent_at else None, "updated_at": p.updated_at.isoformat() if p.updated_at else None, "error_reason": p.error_reason, "delivery_reference": p.idempotency_key, "previous_delivery": ({"participant_id": p.previous_delivery_id, "name": participant_by_id[p.previous_delivery_id].name, "email": participant_by_id[p.previous_delivery_id].email, "sent_at": participant_by_id[p.previous_delivery_id].sent_at.isoformat() if participant_by_id[p.previous_delivery_id].sent_at else None, "smtp_message_id": participant_by_id[p.previous_delivery_id].smtp_message_id, "filename": participant_by_id[p.previous_delivery_id].filename} if p.previous_delivery_id and p.previous_delivery_id in participant_by_id else None), "attempts": [{"attempt_number": a.attempt_number, "started_at": a.started_at.isoformat() if a.started_at else None, "finished_at": a.finished_at.isoformat() if a.finished_at else None, "outcome": a.outcome, "error_code": a.error_code, "error_reason": a.error_reason, "reconciliation_action": a.reconciliation_action, "reconciliation_note": a.reconciliation_note, "reconciled_at": a.reconciled_at.isoformat() if a.reconciled_at else None} for a in sorted(p.attempts, key=lambda item: item.attempt_number, reverse=True)]} for p in sorted(imported, key=lambda item: item.row_number)] if include_participants else [],
+        "participants": [{"id": p.id, "row_number": p.row_number, "name": p.name, "email": p.email, "is_valid": p.is_valid, "is_excluded": p.is_excluded, "validation_error": p.validation_error, "status": p.status.value, "filename": p.filename, "certificate_current": current[p.id], "legibility_warning": p.legibility_warning, "generation_error": p.generation_error, "smtp_message_id": p.smtp_message_id, "sent_at": p.sent_at.isoformat() if p.sent_at else None, "updated_at": p.updated_at.isoformat() if p.updated_at else None, "error_reason": p.error_reason, "delivery_reference": p.idempotency_key, "previous_delivery": ({"participant_id": p.previous_delivery_id, "name": participant_by_id[p.previous_delivery_id].name, "email": participant_by_id[p.previous_delivery_id].email, "sent_at": participant_by_id[p.previous_delivery_id].sent_at.isoformat() if participant_by_id[p.previous_delivery_id].sent_at else None, "smtp_message_id": participant_by_id[p.previous_delivery_id].smtp_message_id, "filename": participant_by_id[p.previous_delivery_id].filename} if p.previous_delivery_id and p.previous_delivery_id in participant_by_id else None), "attempts": [{"attempt_number": a.attempt_number, "started_at": a.started_at.isoformat() if a.started_at else None, "finished_at": a.finished_at.isoformat() if a.finished_at else None, "outcome": a.outcome, "error_code": a.error_code, "error_reason": a.error_reason, "reconciliation_action": a.reconciliation_action, "reconciliation_note": a.reconciliation_note, "reconciled_at": a.reconciled_at.isoformat() if a.reconciled_at else None, "certificate_filename": a.certificate_filename} for a in sorted(p.attempts, key=lambda item: item.attempt_number, reverse=True)]} for p in sorted(imported, key=lambda item: item.row_number)] if include_participants else [],
     }
 
 
@@ -325,6 +335,7 @@ def update_participant(participant_id: str, payload: ParticipantPatch, db: Sessi
     revalidate_active_participants(row.batch)
     if content_changed and row.status != DeliveryStatus.SENT:
         row.certificate_path = row.preview_path = row.filename = row.legibility_warning = row.generation_error = None
+        row.certificate_revision = None
     try: db.commit()
     except Exception as exc:
         db.rollback(); raise HTTPException(409, "Participant changes could not be saved") from exc
@@ -392,6 +403,7 @@ async def upload_template(batch_id: str, file: UploadFile = File(...), db: Sessi
     except (UnidentifiedImageError, OSError) as exc: raise HTTPException(400, "Invalid image content") from exc
     path = settings.upload_dir / f"{batch_id}-template{suffix}"
     path.write_bytes(data); batch.template_path = str(path.resolve())
+    advance_certificate_revision(batch)
     for row in batch.participants:
         if row.is_current_import and row.status not in {DeliveryStatus.SENT, DeliveryStatus.SENDING, DeliveryStatus.UNCERTAIN}:
             row.certificate_path = row.preview_path = row.filename = row.legibility_warning = None
@@ -411,6 +423,7 @@ async def upload_font(batch_id: str, file: UploadFile = File(...), db: Session =
     except OSError as exc:
         path.unlink(missing_ok=True); raise HTTPException(400, "Invalid or unsupported font file") from exc
     batch.font_path = str(path.resolve())
+    advance_certificate_revision(batch)
     for row in batch.participants:
         if row.is_current_import and row.status not in {DeliveryStatus.SENT, DeliveryStatus.SENDING, DeliveryStatus.UNCERTAIN}:
             row.certificate_path = row.preview_path = row.filename = row.legibility_warning = None
@@ -424,6 +437,7 @@ def use_default_font(batch_id: str, db: Session = Depends(get_db)):
     if generation.is_running(batch_id):
         raise HTTPException(409, "Wait for certificate generation to finish")
     batch.font_path = None
+    advance_certificate_revision(batch)
     for row in batch.participants:
         if row.is_current_import and row.status not in {DeliveryStatus.SENT, DeliveryStatus.SENDING, DeliveryStatus.UNCERTAIN}:
             row.certificate_path = row.preview_path = row.filename = row.legibility_warning = None
@@ -471,6 +485,7 @@ def update_region(batch_id: str, payload: RegionUpdate, db: Session = Depends(ge
     batch = batch_or_404(db, batch_id)
     if generation.is_running(batch_id): raise HTTPException(409, "Wait for certificate generation to finish")
     for key, value in payload.model_dump().items(): setattr(batch, f"region_{key}" if key in {"x", "y", "w", "h"} else key, value)
+    advance_certificate_revision(batch)
     for row in batch.participants:
         if row.is_current_import and row.status not in {DeliveryStatus.SENT, DeliveryStatus.SENDING, DeliveryStatus.UNCERTAIN}:
             row.certificate_path = row.preview_path = row.filename = row.legibility_warning = None
@@ -481,8 +496,8 @@ def update_region(batch_id: str, payload: RegionUpdate, db: Session = Depends(ge
 def generate(batch_id: str, db: Session = Depends(get_db)):
     batch = batch_or_404(db, batch_id)
     if not batch.template_path: raise HTTPException(409, "Upload a certificate template first")
-    eligible = [row for row in batch.participants if row.is_current_import and row.is_valid and not row.is_excluded and row.status in {DeliveryStatus.PENDING, DeliveryStatus.FAILED}]
-    if not eligible: raise HTTPException(409, "No valid unsent participants are eligible for generation")
+    eligible = [row for row in batch.participants if row.is_current_import and row.is_valid and not row.is_excluded]
+    if not eligible: raise HTTPException(409, "No valid included participants are eligible for generation")
     if generation.is_running(batch_id) or batch.generation_status == "RUNNING":
         raise HTTPException(409, "Certificate generation is already running for this batch")
     if not generation.start(batch_id):
@@ -490,26 +505,41 @@ def generate(batch_id: str, db: Session = Depends(get_db)):
     return {"started": True, "total": len(eligible)}
 
 
+@app.post("/api/batches/{batch_id}/participants/{participant_id}/generate")
+def generate_participant(batch_id: str, participant_id: str, db: Session = Depends(get_db)):
+    participant = db.get(Participant, participant_id)
+    if not participant or participant.batch_id != batch_id or not participant.is_current_import:
+        raise HTTPException(404, "Participant not found")
+    batch = participant.batch
+    if not participant.is_valid or participant.is_excluded:
+        raise HTTPException(409, "Only valid included participants can be regenerated")
+    if not batch.template_path:
+        raise HTTPException(409, "Upload a certificate template first")
+    if generation.is_running(batch.id) or batch.generation_status == "RUNNING":
+        raise HTTPException(409, "Certificate generation is already running for this session")
+    if not generation.start(batch.id, participant.id):
+        raise HTTPException(409, "Certificate generation is already running for this session")
+    return {"started": True, "total": 1, "participant_id": participant.id}
+
+
 @app.get("/api/participants/{participant_id}/preview")
 def preview(participant_id: str, db: Session = Depends(get_db)):
     row = db.get(Participant, participant_id)
     if not row or not row.preview_path: raise HTTPException(404, "Preview not generated")
-    if not is_render_current(row.certificate_path): raise HTTPException(409, "Certificate styling changed; regenerate this certificate")
-    return FileResponse(row.preview_path, media_type="image/png")
+    return FileResponse(row.preview_path, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/participants/{participant_id}/certificate")
 def certificate(participant_id: str, db: Session = Depends(get_db)):
     row = db.get(Participant, participant_id)
     if not row or not row.certificate_path: raise HTTPException(404, "Certificate not generated")
-    if not is_render_current(row.certificate_path): raise HTTPException(409, "Certificate styling changed; regenerate this certificate")
     return FileResponse(row.certificate_path, media_type="application/pdf", filename=row.filename)
 
 
 @app.get("/api/batches/{batch_id}/zip")
 def download_zip(batch_id: str, db: Session = Depends(get_db)):
     batch = batch_or_404(db, batch_id)
-    files = [(Path(p.certificate_path), p.filename or "certificate.pdf") for p in batch.participants if p.is_current_import and p.certificate_path and not p.is_excluded and is_render_current(p.certificate_path)]
+    files = [(Path(p.certificate_path), p.filename or "certificate.pdf") for p in batch.participants if p.is_current_import and p.certificate_path and not p.is_excluded and p.certificate_revision == batch.certificate_revision and is_render_current(p.certificate_path)]
     if not files: raise HTTPException(409, "Generate certificates first")
     path = make_zip(files, settings.generated_dir / f"{batch.id}-certificates.zip")
     return FileResponse(path, media_type="application/zip", filename=f"{safe_filename(batch.name)}-certificates.zip")
@@ -548,7 +578,11 @@ def start_send(batch_id: str, payload: StartSendRequest, db: Session = Depends(g
     if delivery.is_running(batch_id):
         raise HTTPException(409, "A sending worker is already active for this batch")
     pending_eligible = [p for p in batch.participants if p.is_current_import and p.is_valid and not p.is_excluded and p.status == DeliveryStatus.PENDING]
-    ready = sum(1 for p in pending_eligible if is_render_current(p.certificate_path))
+    ready = sum(
+        1 for p in pending_eligible
+        if p.certificate_revision == batch.certificate_revision
+        and is_render_current(p.certificate_path)
+    )
     expected = f"SEND {ready}"
     if payload.confirmation != expected: raise HTTPException(400, f"Confirmation must exactly match: {expected}")
     if ready == 0: raise HTTPException(409, "No pending participants have a current generated certificate")

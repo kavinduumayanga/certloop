@@ -9,6 +9,7 @@ export interface DeliveryAttempt {
   reconciliation_action: string | null;
   reconciliation_note: string | null;
   reconciled_at: string | null;
+  certificate_filename?: string | null;
 }
 export interface PreviousDelivery {
   participant_id: string;

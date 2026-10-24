@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from ..config import Settings
 from ..database import SessionLocal
-from ..models import Batch, DeliveryStatus, Participant
+from ..models import Batch, Participant
 from .fonts import resolve_font_path
 from .rendering import render_certificate
 
@@ -39,30 +39,32 @@ class GenerationManager:
             thread = self._threads.get(batch_id)
             return bool(thread and thread.is_alive())
 
-    def start(self, batch_id: str) -> bool:
+    def start(self, batch_id: str, participant_id: str | None = None) -> bool:
         with self._lock:
             existing = self._threads.get(batch_id)
             if existing and existing.is_alive():
                 return False
-            thread = threading.Thread(target=self._run, args=(batch_id,), daemon=True, name=f"generation-{batch_id[:8]}")
+            thread = threading.Thread(target=self._run, args=(batch_id, participant_id), daemon=True, name=f"generation-{batch_id[:8]}")
             self._threads[batch_id] = thread
             thread.start()
             return True
 
-    def _run(self, batch_id: str) -> None:
+    def _run(self, batch_id: str, participant_id: str | None = None) -> None:
         job_id = str(uuid.uuid4())
         with SessionLocal() as db:
             batch = db.get(Batch, batch_id)
             if not batch or not batch.template_path:
                 return
             active_import_id = batch.active_import_id
-            rows = db.scalars(select(Participant).where(
+            query = select(Participant).where(
                 Participant.batch_id == batch_id,
                 Participant.is_current_import.is_(True),
                 Participant.is_valid.is_(True),
                 Participant.is_excluded.is_(False),
-                Participant.status.in_([DeliveryStatus.PENDING, DeliveryStatus.FAILED]),
-            ).order_by(Participant.row_number)).all()
+            )
+            if participant_id:
+                query = query.where(Participant.id == participant_id)
+            rows = db.scalars(query.order_by(Participant.row_number)).all()
             ids = [row.id for row in rows]
             batch.generation_job_id = job_id
             batch.generation_status = "RUNNING"
@@ -74,6 +76,7 @@ class GenerationManager:
             batch.generation_finished_at = None
             template_path = Path(batch.template_path)
             font_path = resolve_font_path(batch.font_path)
+            certificate_revision = batch.certificate_revision
             region = {
                 "x": batch.region_x, "y": batch.region_y, "w": batch.region_w, "h": batch.region_h,
                 "font_size": batch.font_size, "min_font_size": batch.min_font_size,
@@ -111,6 +114,7 @@ class GenerationManager:
                     row.filename = result.filename
                     row.legibility_warning = result.warning
                     row.generation_error = None
+                    row.certificate_revision = certificate_revision
                     batch.generation_succeeded += 1
                     db.commit()
             except Exception as exc:  # preserve the rest of a bulk generation job

@@ -165,7 +165,11 @@ class DeliveryManager:
                 Participant.is_excluded.is_(False),
                 Participant.certificate_path.is_not(None),
             )).all())
-            ids = [row.id for row in rows if is_render_current(row.certificate_path)]
+            ids = [
+                row.id for row in rows
+                if row.certificate_revision == batch.certificate_revision
+                and is_render_current(row.certificate_path)
+            ]
         logger.info("delivery_event=batch_ready batch=%s recipients=%s workers=%s", _record_ref(batch_id), len(ids), self.settings.smtp_workers)
         client = None
         try:
@@ -224,7 +228,7 @@ class DeliveryManager:
                 participant.error_reason = "Email configuration or certificate is missing"
                 db.commit()
                 return
-            if not is_render_current(participant.certificate_path):
+            if participant.certificate_revision != batch.certificate_revision or not is_render_current(participant.certificate_path):
                 participant.error_reason = "Certificate styling changed; regenerate before sending"
                 db.commit()
                 logger.warning("delivery_event=skipped participant=%s reason=outdated_certificate", _record_ref(participant_id))
@@ -268,7 +272,12 @@ class DeliveryManager:
                 return
             participant = db.get(Participant, participant_id)
             attempt_count = db.scalar(select(func.count()).select_from(DeliveryAttempt).where(DeliveryAttempt.participant_id == participant.id)) or 0
-            attempt = DeliveryAttempt(participant_id=participant.id, attempt_number=attempt_count + 1)
+            attempt = DeliveryAttempt(
+                participant_id=participant.id,
+                attempt_number=attempt_count + 1,
+                certificate_path=participant.certificate_path,
+                certificate_filename=participant.filename,
+            )
             db.add(attempt)
             db.commit()
         logger.info("delivery_event=profile participant=%s stage=atomic_claim duration_ms=%s", _record_ref(participant_id), round((time.perf_counter() - claim_started) * 1000, 1))

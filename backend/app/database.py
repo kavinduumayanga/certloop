@@ -1,4 +1,5 @@
 from pathlib import Path
+import uuid
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -82,11 +83,7 @@ def ensure_schema() -> None:
             "generation_current_name": "VARCHAR(500)",
             "generation_started_at": "DATETIME",
             "generation_finished_at": "DATETIME",
-        },
-        "delivery_attempts": {
-            "reconciliation_action": "VARCHAR(40)",
-            "reconciliation_note": "TEXT",
-            "reconciled_at": "DATETIME",
+            "certificate_revision": "VARCHAR(36)",
         },
         "participants": {
             "is_current_import": "BOOLEAN NOT NULL DEFAULT 1",
@@ -94,6 +91,14 @@ def ensure_schema() -> None:
             "canonical_email": "VARCHAR(320)",
             "previous_delivery_id": "VARCHAR",
             "generation_error": "TEXT",
+            "certificate_revision": "VARCHAR(36)",
+        },
+        "delivery_attempts": {
+            "reconciliation_action": "VARCHAR(40)",
+            "reconciliation_note": "TEXT",
+            "reconciled_at": "DATETIME",
+            "certificate_path": "TEXT",
+            "certificate_filename": "VARCHAR(600)",
         },
     }
     with engine.begin() as connection:
@@ -112,6 +117,14 @@ def ensure_schema() -> None:
             if not active_import_id:
                 connection.execute(text("UPDATE batches SET active_import_id=:import_id WHERE id=:batch_id"), {"import_id": import_id, "batch_id": batch_id})
             connection.execute(text("UPDATE participants SET import_id=:import_id WHERE batch_id=:batch_id AND is_current_import=1 AND import_id IS NULL"), {"import_id": import_id, "batch_id": batch_id})
+        # Existing generated certificates represent the current settings at the
+        # time this revision tracking is introduced. Future configuration
+        # changes advance only the batch revision and make old files visibly stale.
+        for batch_id, stored_revision in connection.execute(text("SELECT id, certificate_revision FROM batches")).all():
+            revision = stored_revision or str(uuid.uuid4())
+            if not stored_revision:
+                connection.execute(text("UPDATE batches SET certificate_revision=:revision WHERE id=:batch_id"), {"revision": revision, "batch_id": batch_id})
+            connection.execute(text("UPDATE participants SET certificate_revision=:revision WHERE batch_id=:batch_id AND certificate_path IS NOT NULL AND certificate_revision IS NULL"), {"revision": revision, "batch_id": batch_id})
         connection.execute(text("UPDATE participants SET canonical_email=lower(email) WHERE canonical_email IS NULL AND normalized_email NOT LIKE '__invalid__:%'"))
         ensure_unique_session_names(connection)
         # Runtime files were historically stored as absolute paths. Repair only
@@ -131,6 +144,29 @@ def ensure_schema() -> None:
                 connection.execute(text("UPDATE participants SET certificate_path=:certificate_path, preview_path=:preview_path WHERE id=:participant_id"), {
                     "certificate_path": repaired_certificate, "preview_path": repaired_preview, "participant_id": participant_id,
                 })
+        for attempt_id, batch_id, certificate_path in connection.execute(text("""
+            SELECT delivery_attempts.id, participants.batch_id, delivery_attempts.certificate_path
+            FROM delivery_attempts
+            JOIN participants ON participants.id = delivery_attempts.participant_id
+            WHERE delivery_attempts.certificate_path IS NOT NULL
+        """)).all():
+            repaired_certificate = relocated_path(certificate_path, settings.generated_dir, batch_id)
+            if repaired_certificate != certificate_path:
+                connection.execute(text("UPDATE delivery_attempts SET certificate_path=:path WHERE id=:attempt_id"), {"path": repaired_certificate, "attempt_id": attempt_id})
+        # Snapshot the attachment used by each historical delivery attempt.
+        # Versioned regeneration can then safely update the participant's current file.
+        connection.execute(text("""
+            UPDATE delivery_attempts
+            SET certificate_path = (
+                    SELECT certificate_path FROM participants
+                    WHERE participants.id = delivery_attempts.participant_id
+                ),
+                certificate_filename = (
+                    SELECT filename FROM participants
+                    WHERE participants.id = delivery_attempts.participant_id
+                )
+            WHERE certificate_path IS NULL
+        """))
 
 
 def get_db():
